@@ -1,0 +1,334 @@
+CREATE TABLE formula (
+    id TEXT NOT NULL PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT,
+    is_builtin INTEGER NOT NULL DEFAULT 0,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE formula_symbol (
+    id TEXT NOT NULL PRIMARY KEY,
+    formula_id TEXT NOT NULL REFERENCES formula(id) ON DELETE CASCADE,
+
+    kind TEXT NOT NULL,
+    key TEXT NOT NULL,
+    label TEXT NOT NULL,
+
+    default_value TEXT,
+    constant_value TEXT,
+    expression TEXT,
+
+    unit TEXT,
+    precision INTEGER NOT NULL DEFAULT 2,
+    required INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+
+    CHECK (kind IN ('INPUT', 'CONSTANT', 'OUTPUT')),
+
+    CHECK (
+        (
+            kind = 'INPUT'
+            AND constant_value IS NULL
+            AND expression IS NULL
+        )
+        OR
+        (
+            kind = 'CONSTANT'
+            AND default_value IS NULL
+            AND expression IS NULL
+            AND constant_value IS NOT NULL
+        )
+        OR
+        (
+            kind = 'OUTPUT'
+            AND default_value IS NULL
+            AND constant_value IS NULL
+            AND expression IS NOT NULL
+        )
+    )
+);
+
+CREATE UNIQUE INDEX formula_symbol_unique_key
+ON formula_symbol(formula_id, key);
+
+CREATE INDEX formula_symbol_formula_id_index
+ON formula_symbol(formula_id);
+
+CREATE INDEX formula_symbol_formula_kind_index
+ON formula_symbol(formula_id, kind);
+
+countFormulas:
+SELECT COUNT(*)
+FROM formula;
+
+selectAllFormulas:
+SELECT *
+FROM formula
+ORDER BY sort_order ASC, updated_at DESC;
+
+selectFormulaById:
+SELECT *
+FROM formula
+WHERE id = ?;
+
+selectSymbolsByFormulaId:
+SELECT *
+FROM formula_symbol
+WHERE formula_id = ?
+ORDER BY
+    CASE kind
+        WHEN 'INPUT' THEN 0
+        WHEN 'CONSTANT' THEN 1
+        WHEN 'OUTPUT' THEN 2
+        ELSE 3
+    END ASC,
+    sort_order ASC;
+
+selectInputSymbolsByFormulaId:
+SELECT *
+FROM formula_symbol
+WHERE formula_id = ?
+AND kind = 'INPUT'
+ORDER BY sort_order ASC;
+
+selectConstantSymbolsByFormulaId:
+SELECT *
+FROM formula_symbol
+WHERE formula_id = ?
+AND kind = 'CONSTANT'
+ORDER BY sort_order ASC;
+
+selectOutputSymbolsByFormulaId:
+SELECT *
+FROM formula_symbol
+WHERE formula_id = ?
+AND kind = 'OUTPUT'
+ORDER BY sort_order ASC;
+
+insertFormula:
+INSERT INTO formula(
+    id,
+    title,
+    description,
+    is_builtin,
+    sort_order,
+    created_at,
+    updated_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+    title = excluded.title,
+    description = excluded.description,
+    is_builtin = excluded.is_builtin,
+    sort_order = excluded.sort_order,
+    updated_at = excluded.updated_at;
+
+insertFormulaSymbol:
+INSERT INTO formula_symbol(
+    id,
+    formula_id,
+    kind,
+    key,
+    label,
+    default_value,
+    constant_value,
+    expression,
+    unit,
+    precision,
+    required,
+    sort_order
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteSymbolsByFormulaId:
+DELETE FROM formula_symbol
+WHERE formula_id = ?;
+
+deleteFormulaById:
+DELETE FROM formula
+WHERE id = ?;
+
+CREATE TABLE calculation_history (
+    id TEXT NOT NULL PRIMARY KEY,
+    formula_id TEXT NOT NULL,
+    formula_title TEXT NOT NULL,
+    formula_description TEXT,
+    formula_is_builtin INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL,
+    error_message TEXT,
+    error_field_key TEXT,
+    note TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+
+    CHECK (status IN ('SUCCESS', 'FAILURE')),
+    CHECK (
+        (
+            status = 'SUCCESS'
+            AND error_message IS NULL
+            AND error_field_key IS NULL
+        )
+        OR
+        (
+            status = 'FAILURE'
+            AND error_message IS NOT NULL
+        )
+    )
+);
+
+CREATE INDEX calculation_history_formula_id_index
+ON calculation_history(formula_id);
+
+CREATE INDEX calculation_history_created_at_index
+ON calculation_history(created_at DESC);
+
+CREATE INDEX calculation_history_status_index
+ON calculation_history(status);
+
+CREATE TABLE calculation_history_input (
+    id TEXT NOT NULL PRIMARY KEY,
+    history_id TEXT NOT NULL REFERENCES calculation_history(id) ON DELETE CASCADE,
+    key TEXT NOT NULL,
+    label TEXT NOT NULL,
+    raw_value TEXT,
+    numeric_value REAL,
+    unit TEXT,
+    required INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE UNIQUE INDEX calculation_history_input_unique_key
+ON calculation_history_input(history_id, key);
+
+CREATE INDEX calculation_history_input_history_id_index
+ON calculation_history_input(history_id);
+
+CREATE TABLE calculation_history_output (
+    id TEXT NOT NULL PRIMARY KEY,
+    history_id TEXT NOT NULL REFERENCES calculation_history(id) ON DELETE CASCADE,
+    key TEXT NOT NULL,
+    label TEXT NOT NULL,
+    expression TEXT NOT NULL,
+    value REAL NOT NULL,
+    formatted_value TEXT NOT NULL,
+    unit TEXT,
+    precision INTEGER NOT NULL DEFAULT 2,
+    sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE UNIQUE INDEX calculation_history_output_unique_key
+ON calculation_history_output(history_id, key);
+
+CREATE INDEX calculation_history_output_history_id_index
+ON calculation_history_output(history_id);
+
+countCalculationHistories:
+SELECT COUNT(*)
+FROM calculation_history;
+
+selectCalculationHistories:
+SELECT *
+FROM calculation_history
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?;
+
+selectCalculationHistoriesByFormulaId:
+SELECT *
+FROM calculation_history
+WHERE formula_id = ?
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?;
+
+selectCalculationHistoryById:
+SELECT *
+FROM calculation_history
+WHERE id = ?;
+
+selectCalculationHistoryInputs:
+SELECT *
+FROM calculation_history_input
+WHERE history_id = ?
+ORDER BY sort_order ASC;
+
+selectCalculationHistoryOutputs:
+SELECT *
+FROM calculation_history_output
+WHERE history_id = ?
+ORDER BY sort_order ASC;
+
+insertCalculationHistory:
+INSERT INTO calculation_history(
+    id,
+    formula_id,
+    formula_title,
+    formula_description,
+    formula_is_builtin,
+    status,
+    error_message,
+    error_field_key,
+    note,
+    created_at,
+    updated_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+    formula_id = excluded.formula_id,
+    formula_title = excluded.formula_title,
+    formula_description = excluded.formula_description,
+    formula_is_builtin = excluded.formula_is_builtin,
+    status = excluded.status,
+    error_message = excluded.error_message,
+    error_field_key = excluded.error_field_key,
+    note = excluded.note,
+    updated_at = excluded.updated_at;
+
+insertCalculationHistoryInput:
+INSERT INTO calculation_history_input(
+    id,
+    history_id,
+    key,
+    label,
+    raw_value,
+    numeric_value,
+    unit,
+    required,
+    sort_order
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+insertCalculationHistoryOutput:
+INSERT INTO calculation_history_output(
+    id,
+    history_id,
+    key,
+    label,
+    expression,
+    value,
+    formatted_value,
+    unit,
+    precision,
+    sort_order
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateCalculationHistoryNote:
+UPDATE calculation_history
+SET note = ?, updated_at = ?
+WHERE id = ?;
+
+deleteCalculationHistoryInputs:
+DELETE FROM calculation_history_input
+WHERE history_id = ?;
+
+deleteCalculationHistoryOutputs:
+DELETE FROM calculation_history_output
+WHERE history_id = ?;
+
+deleteCalculationHistoryById:
+DELETE FROM calculation_history
+WHERE id = ?;
+
+deleteAllCalculationHistories:
+DELETE FROM calculation_history;

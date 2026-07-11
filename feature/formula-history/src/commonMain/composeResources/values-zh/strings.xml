@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<resources>
+    <string name="history_load_failed">加载计算历史失败</string>
+    <string name="history_detail_title">计算详情</string>
+    <string name="action_back">返回</string>
+    <string name="action_delete">删除</string>
+    <string name="history_records_subtitle">计算历史记录</string>
+    <string name="history_search_placeholder">搜索备注、参数或结果...</string>
+    <string name="clear_search">清空搜索</string>
+    <string name="history_advanced_filter">高级筛选</string>
+    <string name="history_filter_time_range">时间范围</string>
+    <string name="history_filter_formula_type">公式类型</string>
+    <string name="history_filter_other_options">其他选项</string>
+    <string name="history_show_notes_only">仅显示包含备注的记录</string>
+    <string name="action_reset">重置</string>
+    <string name="action_confirm">确定</string>
+    <string name="history_no_output">无输出结果</string>
+    <string name="history_unknown_error">未知计算错误</string>
+    <string name="history_has_note">有备注</string>
+    <string name="badge_builtin">系统内置</string>
+    <string name="badge_custom">自定义</string>
+    <string name="history_status_success">成功</string>
+    <string name="history_status_failed">失败</string>
+    <string name="history_note_label">计算备注</string>
+    <string name="history_inputs_count">输入参数 (%1$d)</string>
+    <string name="history_outputs_count">计算结果 (%1$d)</string>
+    <string name="history_formula_expression">公式: %1$s</string>
+    <string name="filter_status">计算状态</string>
+    <string name="filter_status_all">全部状态</string>
+    <string name="filter_status_success">计算成功</string>
+    <string name="filter_status_failure">计算失败</string>
+    <string name="filter_time_all">全部时间</string>
+    <string name="filter_time_today">今天</string>
+    <string name="filter_time_7_days">最近7天</string>
+    <string name="filter_time_30_days">最近30天</string>
+    <string name="filter_type_all">全部类型</string>
+    <string name="filter_type_builtin">系统内置</string>
+    <string name="filter_type_custom">用户自定义</string>
+    <string name="history_no_records">暂无计算历史</string>
+    <string name="history_no_matching_records">没有符合筛选条件的历史记录</string>
+    <string name="history_error_log">错误日志</string>
+    <string name="history_calculation_exception">计算异常</string>
+    <string name="history_error_field">出错字段: %1$s</string>
+    <string name="action_remove_filter">移除筛选</string>
+    <string name="filter_note_only">仅含备注</string>
+    <string name="history_all_formulas">全部公式</string>
+</resources>

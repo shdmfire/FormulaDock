@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<resources>
+    <string name="app_name">FormulaDock</string>
+    <string name="tray_open_main">Open Main Panel</string>
+    <string name="tray_open_quick_calc">Open Quick Calculator Panel</string>
+    <string name="tray_exit">Exit</string>
+    <string name="window_title_quick_calc">Quick Calculator</string>
+</resources>

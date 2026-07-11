@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<resources>
+    <string name="action_run">Run</string>
+    <string name="action_edit">Edit</string>
+    <string name="action_duplicate">Duplicate</string>
+    <string name="action_export">Export / Share</string>
+    <string name="action_delete">Delete</string>
+    <string name="formula_list_load_failed">Failed to load formulas</string>
+    <string name="action_settings">Settings</string>
+    <string name="action_history">History</string>
+    <string name="action_more">More</string>
+    <string name="action_batch_manage">Batch Management / Export</string>
+    <string name="action_toggle_menu">Toggle Menu</string>
+    <string name="action_create_formula">Create Formula</string>
+    <string name="action_data_management">Formula Data Management</string>
+    <string name="search_placeholder">Search formula name or description...</string>
+    <string name="clear_search">Clear search</string>
+    <string name="formula_list_empty">No formulas yet. Create a formula to start.</string>
+    <string name="formula_list_no_matches">No matching formulas found.</string>
+    <string name="badge_default">Default</string>
+    <string name="badge_builtin">Built-in</string>
+    <string name="badge_custom">Custom</string>
+</resources>

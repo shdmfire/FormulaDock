@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<resources>
+    <string name="app_name">公式坞</string>
+    <string name="tray_open_main">打开主面板</string>
+    <string name="tray_open_quick_calc">打开便捷计算面板</string>
+    <string name="tray_exit">退出</string>
+    <string name="window_title_quick_calc">便捷计算器</string>
+</resources>

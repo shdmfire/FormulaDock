@@ -1,0 +1,699 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: >-
+          Version without leading v.
+          Supported formats: 1.2.3, 1.2.3-alpha.1,
+          1.2.3-beta.1 or 1.2.3-rc.1.
+          Prerelease number must be between 1 and 9.
+        required: true
+        default: "1.0.0"
+        type: string
+
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  JAVA_VERSION: "21"
+
+jobs:
+  metadata:
+    name: Prepare release metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      android_version_code: ${{ steps.version.outputs.android_version_code }}
+      package_version: ${{ steps.version.outputs.package_version }}
+      msi_version: ${{ steps.version.outputs.msi_version }}
+      deb_version: ${{ steps.version.outputs.deb_version }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+
+    steps:
+      - name: Resolve and validate version
+        id: version
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="${INPUT_VERSION#v}"
+          fi
+
+          pattern='^([0-9]+)\.([0-9]+)\.([0-9]+)(-(alpha|beta|rc)\.([1-9]))?$'
+
+          if [[ "$version" =~ $pattern ]]; then
+            major="${BASH_REMATCH[1]}"
+            minor="${BASH_REMATCH[2]}"
+            patch="${BASH_REMATCH[3]}"
+            channel="${BASH_REMATCH[5]:-}"
+            prerelease_number="${BASH_REMATCH[6]:-}"
+          else
+            echo "::error::Invalid version: $version"
+            echo "::error::Expected MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-(alpha|beta|rc).N, where N is 1-9"
+            exit 1
+          fi
+
+          for component in "$major" "$minor" "$patch"; do
+            if [[ "$component" != "0" && "$component" == 0* ]]; then
+              echo "::error::Version components must not contain leading zeroes: $version"
+              exit 1
+            fi
+          done
+
+          # These limits guarantee:
+          # 1. Android versionCode remains below the signed 32-bit limit.
+          # 2. MSI uses a valid MAJOR.MINOR.BUILD version.
+          # 3. The encoded MSI BUILD field remains <= 65535.
+          if (( 10#$major > 199 )); then
+            echo "::error::Major version must be between 0 and 199"
+            exit 1
+          fi
+
+          if (( 10#$minor > 99 )); then
+            echo "::error::Minor version must be between 0 and 99"
+            exit 1
+          fi
+
+          if (( 10#$patch > 654 )); then
+            echo "::error::Patch version must be between 0 and 654"
+            exit 1
+          fi
+
+          package_version="${major}.${minor}.${patch}"
+
+          if [[ -z "$channel" ]]; then
+            channel_code=99
+            deb_version="$package_version"
+            is_prerelease=false
+          else
+            case "$channel" in
+              alpha)
+                channel_code=$((10 + 10#$prerelease_number))
+                ;;
+              beta)
+                channel_code=$((30 + 10#$prerelease_number))
+                ;;
+              rc)
+                channel_code=$((60 + 10#$prerelease_number))
+                ;;
+              *)
+                echo "::error::Unsupported prerelease channel: $channel"
+                exit 1
+                ;;
+            esac
+
+            # Debian's tilde sorts prereleases before the stable version:
+            # 1.2.3~rc.1 < 1.2.3
+            deb_version="${package_version}~${channel}.${prerelease_number}"
+            is_prerelease=true
+          fi
+
+          # MSI requires exactly three numeric components.
+          #
+          # Examples:
+          # 1.2.3-alpha.1 -> 1.2.311
+          # 1.2.3-beta.1  -> 1.2.331
+          # 1.2.3-rc.1    -> 1.2.361
+          # 1.2.3         -> 1.2.399
+          # 1.2.4-alpha.1 -> 1.2.411
+          msi_build=$((10#$patch * 100 + channel_code))
+          msi_version="${major}.${minor}.${msi_build}"
+
+          # Deterministic Android versionCode.
+          #
+          # Layout:
+          # MM mm PPP CC
+          #
+          # major:   0-199
+          # minor:   0-99
+          # patch:   0-654
+          # channel: prerelease/stable ordering
+          android_version_code=$(
+            (
+              10#$major * 10000000 +
+              10#$minor * 100000 +
+              10#$patch * 100 +
+              channel_code
+            )
+          )
+
+          if (( android_version_code <= 0 || android_version_code > 2100000000 )); then
+            echo "::error::Generated Android versionCode is invalid: $android_version_code"
+            exit 1
+          fi
+
+          {
+            echo "version=$version"
+            echo "android_version_code=$android_version_code"
+            echo "package_version=$package_version"
+            echo "msi_version=$msi_version"
+            echo "deb_version=$deb_version"
+            echo "is_prerelease=$is_prerelease"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Version:             $version"
+          echo "Android versionCode: $android_version_code"
+          echo "Desktop version:     $package_version"
+          echo "MSI version:         $msi_version"
+          echo "DEB version:         $deb_version"
+          echo "Prerelease:           $is_prerelease"
+
+  build-android:
+    name: Build Android APK
+    needs: metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Validate Android signing secrets
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          missing=()
+
+          [[ -n "${KEYSTORE_BASE64:-}" ]] || missing+=("KEYSTORE_BASE64")
+          [[ -n "${KEYSTORE_PASSWORD:-}" ]] || missing+=("KEYSTORE_PASSWORD")
+          [[ -n "${KEY_ALIAS:-}" ]] || missing+=("KEY_ALIAS")
+          [[ -n "${KEY_PASSWORD:-}" ]] || missing+=("KEY_PASSWORD")
+
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing Android signing secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Decode Android keystore
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+
+          keystore="${RUNNER_TEMP}/formuladock-release.jks"
+
+          printf '%s' "$KEYSTORE_BASE64" \
+            | base64 --decode \
+            > "$keystore"
+
+          if [[ ! -s "$keystore" ]]; then
+            echo "::error::Decoded Android keystore is empty"
+            exit 1
+          fi
+
+          chmod 600 "$keystore"
+
+      - name: Build signed release APK
+        shell: bash
+        env:
+          KEYSTORE_PATH: ${{ runner.temp }}/formuladock-release.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          chmod +x ./gradlew
+
+          ./gradlew \
+            --no-daemon \
+            --stacktrace \
+            :androidApp:assembleRelease \
+            "-PappVersion=${{ needs.metadata.outputs.version }}" \
+            "-PappVersionCode=${{ needs.metadata.outputs.android_version_code }}" \
+            -PsignRelease=true
+
+      - name: Verify and rename APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          apk_directory="androidApp/build/outputs/apk/release"
+
+          if [[ ! -d "$apk_directory" ]]; then
+            echo "::error::Android APK output directory does not exist: $apk_directory"
+            exit 1
+          fi
+
+          mapfile -t apks < <(
+            find "$apk_directory" \
+              -maxdepth 1 \
+              -type f \
+              -name "*.apk" \
+              ! -name "*-unsigned.apk" \
+              -print \
+              | sort
+          )
+
+          if (( ${#apks[@]} != 1 )); then
+            echo "::error::Expected exactly one signed release APK, found ${#apks[@]}"
+
+            if (( ${#apks[@]} > 0 )); then
+              printf '%s\n' "${apks[@]}"
+            fi
+
+            exit 1
+          fi
+
+          apk="${apks[0]}"
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+
+          if [[ -z "$sdk_root" ]]; then
+            echo "::error::ANDROID_SDK_ROOT and ANDROID_HOME are not set"
+            exit 1
+          fi
+
+          apksigner="$(
+            find "$sdk_root/build-tools" \
+              -type f \
+              -name "apksigner" \
+              -print \
+              | sort -V \
+              | tail -n 1
+          )"
+
+          if [[ -z "$apksigner" || ! -x "$apksigner" ]]; then
+            echo "::error::apksigner was not found"
+            exit 1
+          fi
+
+          "$apksigner" verify \
+            --verbose \
+            --print-certs \
+            "$apk"
+
+          mkdir -p dist
+
+          cp "$apk" \
+            "dist/FormulaDock-${{ needs.metadata.outputs.version }}-android.apk"
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-android
+          path: dist/*.apk
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+      - name: Remove Android keystore
+        if: always()
+        shell: bash
+        run: |
+          rm -f "${RUNNER_TEMP}/formuladock-release.jks"
+
+  build-windows:
+    name: Build Windows MSI
+    needs: metadata
+    runs-on: windows-2025
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build MSI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          .\gradlew.bat `
+            --no-daemon `
+            --stacktrace `
+            :desktopApp:packageMsi `
+            "-PpackageVersion=${{ needs.metadata.outputs.package_version }}" `
+            "-PmsiVersion=${{ needs.metadata.outputs.msi_version }}" `
+            "-PdebVersion=${{ needs.metadata.outputs.deb_version }}"
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Gradle MSI build failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Verify and rename MSI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $msis = @(
+            Get-ChildItem `
+              -Path "desktopApp/build/compose/binaries" `
+              -Recurse `
+              -File `
+              -Filter "*.msi"
+          )
+
+          if ($msis.Count -ne 1) {
+            $msis | ForEach-Object {
+              Write-Host $_.FullName
+            }
+
+            throw "Expected exactly one MSI, found $($msis.Count)"
+          }
+
+          New-Item `
+            -ItemType Directory `
+            -Path "dist" `
+            -Force |
+            Out-Null
+
+          Copy-Item `
+            -LiteralPath $msis[0].FullName `
+            -Destination "dist/FormulaDock-${{ needs.metadata.outputs.version }}-windows-x64.msi" `
+            -Force
+
+      # This signs the MSI installer itself.
+      #
+      # Full Authenticode signing of the installed application launcher requires
+      # signing the generated application image before packageMsi creates the MSI.
+      - name: Sign MSI installer
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          if (
+            [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64) -and
+            [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)
+          ) {
+            Write-Host "::notice::Windows signing secrets are not configured. The MSI will remain unsigned."
+            exit 0
+          }
+
+          if (
+            [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64) -or
+            [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)
+          ) {
+            throw "Both WINDOWS_CERTIFICATE_BASE64 and WINDOWS_CERTIFICATE_PASSWORD must be configured"
+          }
+
+          $certificatePath = Join-Path `
+            $env:RUNNER_TEMP `
+            "formuladock-signing.pfx"
+
+          try {
+            [IO.File]::WriteAllBytes(
+              $certificatePath,
+              [Convert]::FromBase64String(
+                $env:WINDOWS_CERTIFICATE_BASE64
+              )
+            )
+          }
+          catch {
+            throw "WINDOWS_CERTIFICATE_BASE64 is not valid Base64: $($_.Exception.Message)"
+          }
+
+          if (-not (Test-Path -LiteralPath $certificatePath)) {
+            throw "Windows signing certificate was not created"
+          }
+
+          if ((Get-Item -LiteralPath $certificatePath).Length -eq 0) {
+            throw "Decoded Windows signing certificate is empty"
+          }
+
+          $windowsKits = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
+
+          $signTools = @(
+            Get-ChildItem `
+              -Path $windowsKits `
+              -Recurse `
+              -File `
+              -Filter "signtool.exe" |
+            Where-Object {
+              $_.FullName -match "\\x64\\signtool\.exe$"
+            } |
+            Sort-Object FullName -Descending
+          )
+
+          if ($signTools.Count -eq 0) {
+            throw "signtool.exe was not found"
+          }
+
+          $signTool = $signTools[0].FullName
+          $msi = "dist/FormulaDock-${{ needs.metadata.outputs.version }}-windows-x64.msi"
+
+          if (-not (Test-Path -LiteralPath $msi)) {
+            throw "MSI does not exist: $msi"
+          }
+
+          & $signTool sign `
+            /fd SHA256 `
+            /tr "http://timestamp.digicert.com" `
+            /td SHA256 `
+            /f $certificatePath `
+            /p $env:WINDOWS_CERTIFICATE_PASSWORD `
+            $msi
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "MSI signing failed with exit code $LASTEXITCODE"
+          }
+
+          & $signTool verify `
+            /pa `
+            /v `
+            $msi
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "MSI signature verification failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-windows
+          path: dist/*.msi
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+      - name: Remove Windows certificate
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item `
+            -LiteralPath "$env:RUNNER_TEMP/formuladock-signing.pfx" `
+            -Force `
+            -ErrorAction SilentlyContinue
+
+  build-linux:
+    name: Build Linux DEB
+    needs: metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build DEB
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          chmod +x ./gradlew
+
+          ./gradlew \
+            --no-daemon \
+            --stacktrace \
+            :desktopApp:packageDeb \
+            "-PpackageVersion=${{ needs.metadata.outputs.package_version }}" \
+            "-PmsiVersion=${{ needs.metadata.outputs.msi_version }}" \
+            "-PdebVersion=${{ needs.metadata.outputs.deb_version }}"
+
+      - name: Verify and rename DEB
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          output_directory="desktopApp/build/compose/binaries"
+
+          if [[ ! -d "$output_directory" ]]; then
+            echo "::error::Compose output directory does not exist: $output_directory"
+            exit 1
+          fi
+
+          mapfile -t debs < <(
+            find "$output_directory" \
+              -type f \
+              -name "*.deb" \
+              -print \
+              | sort
+          )
+
+          if (( ${#debs[@]} != 1 )); then
+            echo "::error::Expected exactly one DEB, found ${#debs[@]}"
+
+            if (( ${#debs[@]} > 0 )); then
+              printf '%s\n' "${debs[@]}"
+            fi
+
+            exit 1
+          fi
+
+          deb="${debs[0]}"
+
+          dpkg-deb --info "$deb"
+          dpkg-deb --contents "$deb" >/dev/null
+
+          mkdir -p dist
+
+          cp "$deb" \
+            "dist/FormulaDock-${{ needs.metadata.outputs.version }}-linux-x64.deb"
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-linux
+          path: dist/*.deb
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  release:
+    name: Publish GitHub Release
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+    needs:
+      - metadata
+      - build-android
+      - build-windows
+      - build-linux
+
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+
+      - name: Validate release artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for extension in apk msi deb; do
+            mapfile -t files < <(
+              find dist \
+                -maxdepth 1 \
+                -type f \
+                -name "*.${extension}" \
+                -print \
+                | sort
+            )
+
+            if (( ${#files[@]} != 1 )); then
+              echo "::error::Expected exactly one .${extension} file, found ${#files[@]}"
+
+              if (( ${#files[@]} > 0 )); then
+                printf '%s\n' "${files[@]}"
+              fi
+
+              exit 1
+            fi
+          done
+
+          echo "Release artifacts:"
+          find dist \
+            -maxdepth 1 \
+            -type f \
+            -print \
+            | sort
+
+      - name: Generate SHA-256 checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          (
+            cd dist
+
+            sha256sum \
+              *.apk \
+              *.msi \
+              *.deb \
+              > SHA256SUMS.txt
+
+            cat SHA256SUMS.txt
+          )
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          name: FormulaDock ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ needs.metadata.outputs.is_prerelease == 'true' }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          preserve_order: true
+          files: |
+            dist/*.apk
+            dist/*.msi
+            dist/*.deb
+            dist/SHA256SUMS.txt

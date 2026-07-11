@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<resources>
+    <string name="action_run">运行</string>
+    <string name="action_edit">编辑</string>
+    <string name="action_duplicate">复制</string>
+    <string name="action_export">导出 / 分享</string>
+    <string name="action_delete">删除</string>
+    <string name="formula_list_load_failed">加载公式失败</string>
+    <string name="action_settings">设置</string>
+    <string name="action_history">历史记录</string>
+    <string name="action_more">更多</string>
+    <string name="action_batch_manage">批量管理/导出</string>
+    <string name="action_toggle_menu">切换菜单</string>
+    <string name="action_create_formula">新建公式</string>
+    <string name="action_data_management">公式数据管理</string>
+    <string name="search_placeholder">搜索公式名称或描述...</string>
+    <string name="clear_search">清空搜索</string>
+    <string name="formula_list_empty">暂无公式记录。创建一个公式以开始使用。</string>
+    <string name="formula_list_no_matches">没有找到与搜索匹配的公式。</string>
+    <string name="badge_default">默认</string>
+    <string name="badge_builtin">系统内置</string>
+    <string name="badge_custom">自定义</string>
+</resources>

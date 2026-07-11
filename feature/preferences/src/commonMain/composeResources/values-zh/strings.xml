@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<resources>
+    <string name="preferences_title">设置</string>
+    <string name="preferences_back">返回</string>
+    <string name="preferences_theme_mode">主题模式</string>
+    <string name="theme_mode_system">跟随系统</string>
+    <string name="theme_mode_light">浅色模式</string>
+    <string name="theme_mode_dark">深色模式</string>
+    <string name="preferences_quick_calculator">便捷计算器</string>
+    <string name="preferences_quick_calculator_enable">打开便捷计算器</string>
+    <string name="preferences_quick_calculator_notification">通知栏</string>
+    <string name="preferences_language">语言</string>
+    <string name="language_system">跟随系统</string>
+    <string name="hotkey_group_title">全局热键</string>
+    <string name="hotkey_error_modifier_required">热键至少需要包含 Ctrl、Alt、Shift 或 Meta</string>
+    <string name="hotkey_convenient_calc_panel">便捷计算面板</string>
+    <string name="hotkey_capturing_hint">请按下新的组合键…（Esc 取消）</string>
+    <string name="action_modify">修改</string>
+    <string name="action_cancel">取消</string>
+    <string name="action_confirm">确定</string>
+    <string name="hotkey_confirm_dialog_title">确认修改全局热键</string>
+    <string name="hotkey_confirm_dialog_message">即将将全局热键修改为：%1$s，这可能会与系统或其他应用的快捷键产生冲突。确定要应用吗？</string>
+</resources>

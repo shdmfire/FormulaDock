@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<resources>
+    <string name="run_share_copied">公式及当前计算结果已复制到剪贴板</string>
+    <string name="run_menu_duplicate">复制公式</string>
+    <string name="run_menu_export">导出公式</string>
+    <string name="run_menu_delete">删除公式</string>
+    <string name="run_delete_confirm_title">确认删除</string>
+    <string name="run_delete_confirm_message">您确定要删除此公式吗？此操作将无法恢复。</string>
+    <string name="run_delete_confirm_action">删除</string>
+    <string name="run_delete_dismiss_action">取消</string>
+    <string name="run_input_parameters">输入参数</string>
+    <string name="run_missing_inputs">请输入参数后自动计算</string>
+    <string name="run_calculation_result">计算结果</string>
+    <string name="run_share_title">分享公式：</string>
+</resources>

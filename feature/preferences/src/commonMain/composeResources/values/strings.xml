@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<resources>
+    <string name="preferences_title">Settings</string>
+    <string name="preferences_back">Back</string>
+    <string name="preferences_theme_mode">Theme Mode</string>
+    <string name="theme_mode_system">Follow System</string>
+    <string name="theme_mode_light">Light Mode</string>
+    <string name="theme_mode_dark">Dark Mode</string>
+    <string name="preferences_quick_calculator">Quick Calculator</string>
+    <string name="preferences_quick_calculator_enable">Open Quick Calculator</string>
+    <string name="preferences_quick_calculator_notification">Notification Bar</string>
+    <string name="preferences_language">Language</string>
+    <string name="language_system">Follow System</string>
+    <string name="hotkey_group_title">Global Hotkey</string>
+    <string name="hotkey_error_modifier_required">Hotkey must include at least Ctrl, Alt, Shift or Meta</string>
+    <string name="hotkey_convenient_calc_panel">Quick Calculator Panel</string>
+    <string name="hotkey_capturing_hint">Press new shortcut combination... (Esc to cancel)</string>
+    <string name="action_modify">Modify</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_confirm">Confirm</string>
+    <string name="hotkey_confirm_dialog_title">Confirm Global Hotkey Change</string>
+    <string name="hotkey_confirm_dialog_message">The global hotkey is about to be changed to: %1$s, which might conflict with system or other application hotkeys. Are you sure you want to apply?</string>
+</resources>

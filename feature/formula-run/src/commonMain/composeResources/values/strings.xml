@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<resources>
+    <string name="run_share_copied">Formula and current calculation results copied to clipboard</string>
+    <string name="run_menu_duplicate">Duplicate Formula</string>
+    <string name="run_menu_export">Export Formula</string>
+    <string name="run_menu_delete">Delete Formula</string>
+    <string name="run_delete_confirm_title">Confirm Delete</string>
+    <string name="run_delete_confirm_message">Are you sure you want to delete this formula? This action cannot be undone.</string>
+    <string name="run_delete_confirm_action">Delete</string>
+    <string name="run_delete_dismiss_action">Cancel</string>
+    <string name="run_input_parameters">Input Parameters</string>
+    <string name="run_missing_inputs">Please enter parameters to calculate automatically</string>
+    <string name="run_calculation_result">Calculation Result</string>
+    <string name="run_share_title">Shared formula: </string>
+</resources>
