@@ -6,11 +6,30 @@ plugins {
     alias(libs.plugins.composeCompiler)
 }
 
+val appVersion = providers
+    .gradleProperty("appVersion")
+    .orElse("1.0.0")
+
+val appVersionCode = providers
+    .gradleProperty("appVersionCode")
+    .map(String::toInt)
+    .orElse(1)
+
+val signRelease = providers
+    .gradleProperty("signRelease")
+    .map(String::toBoolean)
+    .orElse(false)
+
+fun requiredEnvironmentVariable(name: String): String =
+    System.getenv(name)
+        ?: error("Missing required environment variable: $name")
+
 kotlin {
     compilerOptions {
         jvmTarget = JvmTarget.JVM_11
     }
 }
+
 dependencies {
     implementation(projects.shared)
     implementation(projects.core.data)
@@ -40,19 +59,38 @@ android {
         applicationId = "com.formuladock"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 1
-        versionName = "1.0"
+
+        versionCode = appVersionCode.get()
+        versionName = appVersion.get()
     }
+
+    signingConfigs {
+        if (signRelease.get()) {
+            create("release") {
+                storeFile = file(requiredEnvironmentVariable("KEYSTORE_PATH"))
+                storePassword = requiredEnvironmentVariable("KEYSTORE_PASSWORD")
+                keyAlias = requiredEnvironmentVariable("KEY_ALIAS")
+                keyPassword = requiredEnvironmentVariable("KEY_PASSWORD")
+            }
+        }
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
     buildTypes {
         getByName("release") {
             isMinifyEnabled = false
+
+            if (signRelease.get()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
