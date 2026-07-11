@@ -81,9 +81,9 @@ jobs:
           # 1. Android versionCode remains below the signed 32-bit limit.
           # 2. MSI uses a valid MAJOR.MINOR.BUILD version.
           # 3. The encoded MSI BUILD field remains <= 65535.
-          major_num=$((10#$major))
-          minor_num=$((10#$minor))
-          patch_num=$((10#$patch))
+          major_num="$major"
+          minor_num="$minor"
+          patch_num="$patch"
 
           if (( major_num > 199 )); then
             echo "::error::Major version must be between 0 and 199"
@@ -107,7 +107,7 @@ jobs:
             deb_version="$package_version"
             is_prerelease=false
           else
-            prerelease_num=$((10#$prerelease_number))
+            prerelease_num="$prerelease_number"
 
             case "$channel" in
               alpha)
