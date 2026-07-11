@@ -81,17 +81,21 @@ jobs:
           # 1. Android versionCode remains below the signed 32-bit limit.
           # 2. MSI uses a valid MAJOR.MINOR.BUILD version.
           # 3. The encoded MSI BUILD field remains <= 65535.
-          if (( 10#$major > 199 )); then
+          major_num=$((10#$major))
+          minor_num=$((10#$minor))
+          patch_num=$((10#$patch))
+
+          if (( major_num > 199 )); then
             echo "::error::Major version must be between 0 and 199"
             exit 1
           fi
 
-          if (( 10#$minor > 99 )); then
+          if (( minor_num > 99 )); then
             echo "::error::Minor version must be between 0 and 99"
             exit 1
           fi
 
-          if (( 10#$patch > 654 )); then
+          if (( patch_num > 654 )); then
             echo "::error::Patch version must be between 0 and 654"
             exit 1
           fi
@@ -103,15 +107,17 @@ jobs:
             deb_version="$package_version"
             is_prerelease=false
           else
+            prerelease_num=$((10#$prerelease_number))
+
             case "$channel" in
               alpha)
-                channel_code=$((10 + 10#$prerelease_number))
+                channel_code=$((10 + prerelease_num))
                 ;;
               beta)
-                channel_code=$((30 + 10#$prerelease_number))
+                channel_code=$((30 + prerelease_num))
                 ;;
               rc)
-                channel_code=$((60 + 10#$prerelease_number))
+                channel_code=$((60 + prerelease_num))
                 ;;
               *)
                 echo "::error::Unsupported prerelease channel: $channel"
@@ -119,40 +125,14 @@ jobs:
                 ;;
             esac
 
-            # Debian's tilde sorts prereleases before the stable version:
-            # 1.2.3~rc.1 < 1.2.3
             deb_version="${package_version}~${channel}.${prerelease_number}"
             is_prerelease=true
           fi
 
-          # MSI requires exactly three numeric components.
-          #
-          # Examples:
-          # 1.2.3-alpha.1 -> 1.2.311
-          # 1.2.3-beta.1  -> 1.2.331
-          # 1.2.3-rc.1    -> 1.2.361
-          # 1.2.3         -> 1.2.399
-          # 1.2.4-alpha.1 -> 1.2.411
-          msi_build=$((10#$patch * 100 + channel_code))
-          msi_version="${major}.${minor}.${msi_build}"
+          msi_build=$((patch_num * 100 + channel_code))
+          msi_version="${major_num}.${minor_num}.${msi_build}"
 
-          # Deterministic Android versionCode.
-          #
-          # Layout:
-          # MM mm PPP CC
-          #
-          # major:   0-199
-          # minor:   0-99
-          # patch:   0-654
-          # channel: prerelease/stable ordering
-          android_version_code=$(
-            (
-              10#$major * 10000000 +
-              10#$minor * 100000 +
-              10#$patch * 100 +
-              channel_code
-            )
-          )
+          android_version_code=$((major_num * 10000000 + minor_num * 100000 + patch_num * 100 + channel_code))
 
           if (( android_version_code <= 0 || android_version_code > 2100000000 )); then
             echo "::error::Generated Android versionCode is invalid: $android_version_code"
@@ -173,7 +153,7 @@ jobs:
           echo "Desktop version:     $package_version"
           echo "MSI version:         $msi_version"
           echo "DEB version:         $deb_version"
-          echo "Prerelease:           $is_prerelease"
+          echo "Prerelease:          $is_prerelease"
 
   build-android:
     name: Build Android APK
