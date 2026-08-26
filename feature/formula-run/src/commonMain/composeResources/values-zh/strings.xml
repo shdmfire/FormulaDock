@@ -13,4 +13,15 @@
     <string name="run_missing_inputs">请输入参数后自动计算</string>
     <string name="run_calculation_result">计算结果</string>
     <string name="run_share_title">分享公式：</string>
+    <string name="run_action_session_history">选择会话内的历史记录</string>
+    <string name="run_session_history_title">会话内的历史记录</string>
+    <string name="run_session_history_count">共 %1$d 条记录</string>
+    <string name="run_session_history_empty">当前会话暂无历史记录</string>
+    <string name="run_session_history_empty_hint">输入参数并完成计算后将自动保存历史记录</string>
+    <string name="run_session_history_apply">应用</string>
+    <string name="run_session_history_applied">当前使用</string>
+    <string name="run_session_history_tag_latest">最新</string>
+    <string name="run_session_history_tag_initial">初始</string>
+    <string name="run_session_history_revision_number">版本 %1$d</string>
+    <string name="run_session_history_applied_message">已应用版本 %1$d 的计算参数</string>
 </resources>

@@ -25,6 +25,14 @@ class CalculationSessionRecorder(
     private var latestRevisionUpdatedAt: Long = 0L
     private var latestChangedKeys: Set<String> = emptySet()
 
+    val currentSessionId: String?
+        get() = sessionId
+
+    suspend fun loadSessionHistory(): CalculationHistory? = mutex.withLock {
+        val id = sessionId ?: return@withLock null
+        repository.getHistory(id)
+    }
+
     suspend fun startOrResume(formula: FormulaDefinition) = mutex.withLock {
         val id = repository.openOrResumeSession(
             formula = formula,

@@ -13,4 +13,15 @@
     <string name="run_missing_inputs">Please enter parameters to calculate automatically</string>
     <string name="run_calculation_result">Calculation Result</string>
     <string name="run_share_title">Shared formula: </string>
+    <string name="run_action_session_history">Select Session History</string>
+    <string name="run_session_history_title">Session History</string>
+    <string name="run_session_history_count">%1$d records</string>
+    <string name="run_session_history_empty">No history records in current session</string>
+    <string name="run_session_history_empty_hint">History records will be saved automatically as you calculate</string>
+    <string name="run_session_history_apply">Apply</string>
+    <string name="run_session_history_applied">Current</string>
+    <string name="run_session_history_tag_latest">Latest</string>
+    <string name="run_session_history_tag_initial">Initial</string>
+    <string name="run_session_history_revision_number">Version %1$d</string>
+    <string name="run_session_history_applied_message">Applied parameters from version %1$d</string>
 </resources>
