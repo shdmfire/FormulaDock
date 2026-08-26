@@ -118,7 +118,6 @@ private fun QuickCalcPanel(
         FormulaCalculatorPanel(
             repository = repository,
             historyRepository = historyRepository,
-            defaultFormulaId = BuiltinFormulas.ROAD_TRIP_COST_ID,
             fallbackFormula = BuiltinFormulas.roadTripCost(0),
             onClose = onClose
         )
