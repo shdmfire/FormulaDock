@@ -35,12 +35,17 @@ class CalculationSessionRepositoryTest {
             val sessionId = repository.openOrResumeSession(formula, now = 1_000, resumeTimeoutMillis = 300_000)
             repository.appendRevision(sessionId, revision("r1", 1_100), 1, setOf("rate"))
             repository.appendRevision(sessionId, revision("r2", 1_200), 2, setOf("principal"))
+            repository.replaceLatestRevision(sessionId, revision("r2", 1_250), 2, setOf("principal"))
             repository.closeSession(sessionId, now = 1_300)
 
-            val session = repository.getHistories(limit = 10, offset = 0).single()
-            assertEquals(sessionId, session.id)
-            assertEquals(2, session.revisionCount)
-            assertEquals(listOf(2, 1), session.revisions.map { it.revisionNo })
+            val summary = repository.getHistories(limit = 10, offset = 0).single()
+            assertEquals(sessionId, summary.id)
+            assertEquals(2, summary.revisionCount)
+            assertEquals(emptyList(), summary.revisions)
+
+            val detail = repository.getHistory(sessionId)
+            assertEquals(listOf(2, 1), detail?.revisions?.map { it.revisionNo })
+            assertEquals(1_250, repository.getLatestRevision(sessionId)?.updatedAt)
             assertNotNull(repository.getLatestRevision(sessionId))
         }
     }

@@ -9,8 +9,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.annotation.RequiresPermission
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.tooling.preview.Preview
 import com.formuladock.core.data.formula.SqlDelightFormulaRepository
+import com.formuladock.core.designsystem.component.LocalAppInForeground
 import com.formuladock.core.data.history.SqlDelightCalculationHistoryRepository
 import com.formuladock.core.database.DriverFactory
 import com.formuladock.core.database.createDatabase
@@ -24,6 +27,7 @@ import com.formuladock.core.preferences.FormulaDockPreferences
 
 class MainActivity : ComponentActivity() {
     private var isNotificationEnabledBySettings = false
+    private val appInForeground = mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -34,11 +38,13 @@ class MainActivity : ComponentActivity() {
         val historyRepository = SqlDelightCalculationHistoryRepository(db)
 
         setContent {
-            App(
-                repository = repository,
-                historyRepository = historyRepository,
-                shareService = AndroidFormulaShareService(this),
-            )
+            CompositionLocalProvider(LocalAppInForeground provides appInForeground.value) {
+                App(
+                    repository = repository,
+                    historyRepository = historyRepository,
+                    shareService = AndroidFormulaShareService(this),
+                )
+            }
         }
 
         val preferences = FormulaDockPreferences()
@@ -58,6 +64,16 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        appInForeground.value = true
+    }
+
+    override fun onStop() {
+        appInForeground.value = false
+        super.onStop()
     }
 
     @Deprecated("This method has been deprecated in favor of using the Activity Result API\n      which brings increased type safety via an {@link ActivityResultContract} and the prebuilt\n      contracts for common intents available in\n      {@link androidx.activity.result.contract.ActivityResultContracts}, provides hooks for\n      testing, and allow receiving results in separate, testable classes independent from your\n      activity. Use\n      {@link #registerForActivityResult(ActivityResultContract, ActivityResultCallback)} passing\n      in a {@link RequestMultiplePermissions} object for the {@link ActivityResultContract} and\n      handling the result in the {@link ActivityResultCallback#onActivityResult(Object) callback}.")

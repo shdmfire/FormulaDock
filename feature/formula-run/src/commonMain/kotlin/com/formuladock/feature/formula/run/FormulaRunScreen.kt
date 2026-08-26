@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.formuladock.core.designsystem.component.LocalAppInForeground
 import com.formuladock.core.domain.formula.EvaluateFormulaUseCase
 import com.formuladock.core.model.formula.model.FormulaDefinition
 import com.formuladock.core.formula.engine.FormulaEvaluationResult
@@ -66,15 +67,22 @@ fun FormulaRunScreen(
         CalculationSessionRecorder(historyRepository)
     }
     var sessionReady by remember(historyRepository, formula.id) { mutableStateOf(false) }
+    val appInForeground = LocalAppInForeground.current
 
-    LaunchedEffect(sessionRecorder, formula.id) {
-        sessionReady = false
-        sessionRecorder.startOrResume(formula)
-        sessionReady = true
+    LaunchedEffect(sessionRecorder, formula.id, appInForeground) {
+        if (appInForeground) {
+            sessionRecorder.startOrResume(formula)
+            sessionReady = true
+        } else if (sessionReady) {
+            (result as? FormulaEvaluationResult.Success)?.let {
+                sessionRecorder.commit(formula, inputValues, it)
+            }
+            sessionRecorder.pause()
+        }
     }
 
-    LaunchedEffect(formula, inputValues, result, sessionReady) {
-        if (sessionReady && result is FormulaEvaluationResult.Success) {
+    LaunchedEffect(formula, inputValues, result, sessionReady, appInForeground) {
+        if (appInForeground && sessionReady && result is FormulaEvaluationResult.Success) {
             delay(1000L.milliseconds)
             sessionRecorder.commit(formula, inputValues, result)
         }

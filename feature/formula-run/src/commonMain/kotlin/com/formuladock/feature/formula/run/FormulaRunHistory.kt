@@ -20,6 +20,10 @@ class CalculationSessionRecorder(
     private var sessionId: String? = null
     private var revisionNo: Int = 0
     private var lastCommittedInputs: Map<String, String>? = null
+    private var latestRevisionId: String? = null
+    private var latestRevisionCreatedAt: Long = 0L
+    private var latestRevisionUpdatedAt: Long = 0L
+    private var latestChangedKeys: Set<String> = emptySet()
 
     suspend fun startOrResume(formula: FormulaDefinition) = mutex.withLock {
         val id = repository.openOrResumeSession(
@@ -31,6 +35,10 @@ class CalculationSessionRecorder(
         val latest = repository.getLatestRevision(id)
         revisionNo = latest?.revisionNo ?: 0
         lastCommittedInputs = latest?.inputs?.associate { it.key to (it.rawValue ?: "") }
+        latestRevisionId = latest?.id
+        latestRevisionCreatedAt = latest?.createdAt ?: 0L
+        latestRevisionUpdatedAt = latest?.updatedAt ?: 0L
+        latestChangedKeys = latest?.changedKeys.orEmpty()
     }
 
     suspend fun commit(
@@ -43,21 +51,49 @@ class CalculationSessionRecorder(
         if (lastCommittedInputs != null && changedKeys.isEmpty()) return@withLock
 
         val timestamp = nowProvider()
-        val nextRevisionNo = revisionNo + 1
-        val revisionId = "${currentSessionId}_revision_${nextRevisionNo}_$timestamp"
-        repository.appendRevision(
-            sessionId = currentSessionId,
-            history = buildSuccessfulRevision(
-                id = revisionId,
-                formula = formula,
-                inputValues = inputValues,
-                result = result,
-                timestamp = timestamp,
-            ),
-            revisionNo = nextRevisionNo,
-            changedKeys = changedKeys,
-        )
-        revisionNo = nextRevisionNo
+        val elapsedSinceLatest = timestamp - latestRevisionUpdatedAt
+        val shouldReplaceLatest = latestRevisionId != null &&
+            changedKeys == latestChangedKeys &&
+            elapsedSinceLatest in 0..REVISION_REPLACE_WINDOW_MILLIS
+
+        if (shouldReplaceLatest) {
+            val revisionId = checkNotNull(latestRevisionId)
+            repository.replaceLatestRevision(
+                sessionId = currentSessionId,
+                history = buildSuccessfulRevision(
+                    id = revisionId,
+                    formula = formula,
+                    inputValues = inputValues,
+                    result = result,
+                    createdAt = latestRevisionCreatedAt,
+                    updatedAt = timestamp,
+                ),
+                revisionNo = revisionNo,
+                changedKeys = changedKeys,
+            )
+            latestRevisionUpdatedAt = timestamp
+        } else {
+            val nextRevisionNo = revisionNo + 1
+            val revisionId = "${currentSessionId}_revision_${nextRevisionNo}_$timestamp"
+            repository.appendRevision(
+                sessionId = currentSessionId,
+                history = buildSuccessfulRevision(
+                    id = revisionId,
+                    formula = formula,
+                    inputValues = inputValues,
+                    result = result,
+                    createdAt = timestamp,
+                    updatedAt = timestamp,
+                ),
+                revisionNo = nextRevisionNo,
+                changedKeys = changedKeys,
+            )
+            revisionNo = nextRevisionNo
+            latestRevisionId = revisionId
+            latestRevisionCreatedAt = timestamp
+            latestRevisionUpdatedAt = timestamp
+            latestChangedKeys = changedKeys
+        }
         lastCommittedInputs = inputValues.toMap()
     }
 
@@ -81,6 +117,7 @@ class CalculationSessionRecorder(
 
     private companion object {
         const val SESSION_RESUME_TIMEOUT_MILLIS = 5 * 60 * 1000L
+        const val REVISION_REPLACE_WINDOW_MILLIS = 2_000L
     }
 }
 
@@ -97,7 +134,8 @@ suspend fun CalculationHistoryRepository.saveSuccessfulRun(
             formula = formula,
             inputValues = inputValues,
             result = result,
-            timestamp = timestamp,
+            createdAt = timestamp,
+            updatedAt = timestamp,
         )
     )
 }
@@ -107,7 +145,8 @@ private fun buildSuccessfulRevision(
     formula: FormulaDefinition,
     inputValues: Map<String, String>,
     result: FormulaEvaluationResult.Success,
-    timestamp: Long,
+    createdAt: Long,
+    updatedAt: Long,
 ): CalculationHistory = CalculationHistory(
     id = id,
     formulaId = formula.id,
@@ -132,8 +171,8 @@ private fun buildSuccessfulRevision(
     errorMessage = null,
     errorFieldKey = null,
     note = null,
-    createdAt = timestamp,
-    updatedAt = timestamp,
+    createdAt = createdAt,
+    updatedAt = updatedAt,
 )
 
 private fun FormulaEvaluationOutput.toHistoryOutput(

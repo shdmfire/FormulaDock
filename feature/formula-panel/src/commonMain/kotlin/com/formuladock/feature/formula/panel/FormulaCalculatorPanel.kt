@@ -26,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import com.formuladock.core.designsystem.component.FdSearchBar
+import com.formuladock.core.designsystem.component.LocalAppInForeground
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -203,16 +204,24 @@ fun QuickCalculatorContent(
         historyRepository?.let(::CalculationSessionRecorder)
     }
     var sessionReady by remember(historyRepository, formula.id) { mutableStateOf(false) }
+    val appInForeground = LocalAppInForeground.current
 
-    LaunchedEffect(sessionRecorder, formula.id) {
-        sessionReady = false
-        sessionRecorder?.startOrResume(formula)
-        sessionReady = sessionRecorder != null
+    LaunchedEffect(sessionRecorder, formula.id, appInForeground) {
+        if (appInForeground) {
+            sessionRecorder?.startOrResume(formula)
+            sessionReady = sessionRecorder != null
+        } else if (sessionReady) {
+            val result = calculatorState.result
+            if (result is FormulaEvaluationResult.Success) {
+                sessionRecorder?.commit(formula, calculatorState.inputValues, result)
+            }
+            sessionRecorder?.pause()
+        }
     }
 
-    LaunchedEffect(formula, calculatorState.inputValues, calculatorState.result, sessionReady) {
+    LaunchedEffect(formula, calculatorState.inputValues, calculatorState.result, sessionReady, appInForeground) {
         val result = calculatorState.result
-        if (sessionReady && result is FormulaEvaluationResult.Success) {
+        if (appInForeground && sessionReady && result is FormulaEvaluationResult.Success) {
             delay(1000L.milliseconds)
             sessionRecorder?.commit(formula, calculatorState.inputValues, result)
         }
@@ -414,7 +423,14 @@ fun QuickCalculatorContent(
                         formulaId = formula.id,
                         histories = histories,
                         error = null,
-                        onItemClick = { history -> subBackStack.add(QuickCalcRoute.HistoryDetail(history.id)) },
+                        onItemClick = { summary ->
+                            scope.launch {
+                                historyRepository?.getHistory(summary.id)?.let { detail ->
+                                    histories = histories.map { if (it.id == detail.id) detail else it }
+                                    subBackStack.add(QuickCalcRoute.HistoryDetail(detail.id))
+                                }
+                            }
+                        },
                         listMaxHeight = 200.dp,
                         showSearchBar = false // 极小面板，关闭搜索框，实现极致简洁
                     )
@@ -442,7 +458,15 @@ fun QuickCalculatorContent(
                             // 纯净详情，最大高度限制为 180.dp，超过则内部自然滚动
                             CompactHistoryDetailContent(
                                 history = history,
-                                maxHeight = 180.dp
+                                maxHeight = 180.dp,
+                                onApplyRevision = { revision ->
+                                    calculatorState.updateInputValues(
+                                        revision.inputs.associate { it.key to (it.rawValue ?: "") }
+                                    )
+                                    while (subBackStack.size > 1) {
+                                        subBackStack.removeLastOrNull()
+                                    }
+                                },
                             )
                         }
                     }

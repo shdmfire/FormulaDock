@@ -22,6 +22,12 @@ interface CalculationHistoryRepository {
         revisionNo: Int,
         changedKeys: Set<String>,
     )
+    suspend fun replaceLatestRevision(
+        sessionId: String,
+        history: CalculationHistory,
+        revisionNo: Int,
+        changedKeys: Set<String>,
+    )
     suspend fun getLatestRevision(sessionId: String): CalculationRevision?
     suspend fun pauseSession(id: String, now: Long)
     suspend fun closeSession(id: String, now: Long)
@@ -39,7 +45,7 @@ class SqlDelightCalculationHistoryRepository(
     override suspend fun countHistories(): Long = queries.countCalculationHistories().executeAsOne()
 
     override suspend fun getHistories(limit: Long, offset: Long): List<CalculationHistory> =
-        queries.selectCalculationHistories(limit, offset).executeAsList().mapNotNull { it.toModelWithDetails() }
+        queries.selectCalculationHistories(limit, offset).executeAsList().mapNotNull { it.toModelWithDetails(loadAllRevisions = false) }
 
     override suspend fun getHistoriesByFormulaId(
         formulaId: String,
@@ -48,10 +54,10 @@ class SqlDelightCalculationHistoryRepository(
     ): List<CalculationHistory> =
         queries.selectCalculationHistoriesByFormulaId(formulaId, limit, offset)
             .executeAsList()
-            .mapNotNull { it.toModelWithDetails() }
+            .mapNotNull { it.toModelWithDetails(loadAllRevisions = false) }
 
     override suspend fun getHistory(id: String): CalculationHistory? =
-        queries.selectCalculationHistoryById(id).executeAsOneOrNull()?.toModelWithDetails()
+        queries.selectCalculationHistoryById(id).executeAsOneOrNull()?.toModelWithDetails(loadAllRevisions = true)
 
     /** Compatibility entry point: an old one-shot history becomes a closed one-revision session. */
     override suspend fun saveHistory(history: CalculationHistory) {
@@ -115,6 +121,23 @@ class SqlDelightCalculationHistoryRepository(
     }
 
     override suspend fun appendRevision(
+        sessionId: String,
+        history: CalculationHistory,
+        revisionNo: Int,
+        changedKeys: Set<String>,
+    ) {
+        database.transaction {
+            insertRevision(sessionId, history, revisionNo, changedKeys)
+            queries.updateCalculationSessionAfterRevision(
+                final_revision_id = history.id,
+                revision_count = revisionNo.toLong(),
+                last_active_at = history.updatedAt,
+                id = sessionId,
+            )
+        }
+    }
+
+    override suspend fun replaceLatestRevision(
         sessionId: String,
         history: CalculationHistory,
         revisionNo: Int,
@@ -214,13 +237,23 @@ class SqlDelightCalculationHistoryRepository(
         }
     }
 
-    private fun Calculation_session.toModelWithDetails(): CalculationHistory? {
-        val revisions = queries.selectCalculationRevisionsBySessionId(id).executeAsList()
-            .map { it.toRevisionWithDetails() }
-        val finalRevision = final_revision_id
-            ?.let { finalId -> revisions.firstOrNull { it.id == finalId } }
-            ?: revisions.firstOrNull()
-            ?: return null
+    private fun Calculation_session.toModelWithDetails(loadAllRevisions: Boolean): CalculationHistory? {
+        val revisions = if (loadAllRevisions) {
+            queries.selectCalculationRevisionsBySessionId(id).executeAsList()
+                .map { it.toRevisionWithDetails() }
+        } else {
+            emptyList()
+        }
+        val finalRevision = if (loadAllRevisions) {
+            final_revision_id
+                ?.let { finalId -> revisions.firstOrNull { it.id == finalId } }
+                ?: revisions.firstOrNull()
+        } else {
+            final_revision_id
+                ?.let { finalId -> queries.selectCalculationRevisionById(finalId).executeAsOneOrNull() }
+                ?.toRevisionWithDetails()
+                ?: queries.selectLatestCalculationRevision(id).executeAsOneOrNull()?.toRevisionWithDetails()
+        } ?: return null
 
         return CalculationHistory(
             id = id,

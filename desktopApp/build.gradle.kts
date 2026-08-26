@@ -29,6 +29,7 @@ dependencies {
     implementation(projects.feature.formulaPanel)
     implementation(projects.core.data)
     implementation(projects.core.database)
+    implementation(projects.core.designsystem)
     implementation(projects.core.preferences)
 
     implementation(compose.desktop.currentOs)

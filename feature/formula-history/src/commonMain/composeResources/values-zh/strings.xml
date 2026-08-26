@@ -50,4 +50,24 @@
     <string name="history_revision_count">共 %1$d 次计算</string>
     <string name="history_revision_number">版本 %1$d</string>
     <string name="history_changed_fields">修改字段：%1$s</string>
+    <string name="history_apply_revision">应用此版本</string>
+    <string name="history_apply_short">应用</string>
+    <string name="history_version_comparison">版本差异透视</string>
+    <string name="history_select_versions_to_compare">选择版本进行比对分析</string>
+    <string name="history_comparison_inputs">输入参数变更</string>
+    <string name="history_comparison_outputs">计算结果演变</string>
+    <string name="history_compare_with_prev">与上一版对比</string>
+    <string name="history_compare_with_first">与初始版对比</string>
+    <string name="history_filter_only_diff">仅看变动项</string>
+    <string name="history_filter_all_fields">全部字段</string>
+    <string name="history_swap_comparison">切换基准</string>
+    <string name="history_exit_comparison">退出对比</string>
+    <string name="history_no_diff_found">两个版本之间所有参数和结果完全一致</string>
+    <string name="history_tag_latest">最新</string>
+    <string name="history_tag_initial">初始</string>
+    <string name="history_tag_modified">已变动</string>
+    <string name="history_tag_unchanged">未变动</string>
+    <string name="history_compare_base">基准</string>
+    <string name="history_compare_target">对比</string>
+    <string name="history_compare_action">对比此版</string>
 </resources>

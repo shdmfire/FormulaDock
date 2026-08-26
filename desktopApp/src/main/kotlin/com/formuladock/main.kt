@@ -1,5 +1,7 @@
 package com.formuladock
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -15,6 +17,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.formuladock.core.data.formula.SqlDelightFormulaRepository
 import com.formuladock.core.data.history.SqlDelightCalculationHistoryRepository
+import com.formuladock.core.designsystem.component.LocalAppInForeground
 import com.formuladock.core.database.DriverFactory
 import com.formuladock.core.database.createDatabase
 import org.jetbrains.compose.resources.painterResource
@@ -23,6 +26,8 @@ import formuladock.desktopapp.generated.resources.*
 import androidx.compose.ui.unit.dp
 import com.kdroid.composetray.tray.api.Tray
 import com.formuladock.feature.formula.panel.FormulaCalculatorPanel
+import java.awt.event.WindowEvent
+import java.awt.event.WindowFocusListener
 
 fun main() = application {
     var isMainWindowVisible by remember { mutableStateOf(false) }
@@ -91,7 +96,9 @@ fun main() = application {
         alwaysOnTop = true,
         resizable = true
     ) {
-        App(repository = repository, historyRepository = historyRepository)
+        DesktopForegroundProvider(window) {
+            App(repository = repository, historyRepository = historyRepository)
+        }
     }
 
     Window(
@@ -103,18 +110,45 @@ fun main() = application {
         alwaysOnTop = true,
         resizable = false
     ) {
-        FormulaCalculatorPanel(
-            repository = repository,
-            historyRepository = historyRepository,
-            onClose = {
-                isCalculatorPanelVisible = false
-            },
-            onContentReady = {
-                calculatorWindowState.size = DpSize(
-                    width = 360.dp,
-                    height = Dp.Unspecified
-                )
+        DesktopForegroundProvider(window) {
+            FormulaCalculatorPanel(
+                repository = repository,
+                historyRepository = historyRepository,
+                onClose = {
+                    isCalculatorPanelVisible = false
+                },
+                onContentReady = {
+                    calculatorWindowState.size = DpSize(
+                        width = 360.dp,
+                        height = Dp.Unspecified
+                    )
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun DesktopForegroundProvider(
+    window: java.awt.Window,
+    content: @Composable () -> Unit,
+) {
+    var isForeground by remember(window) { mutableStateOf(window.isFocused) }
+    DisposableEffect(window) {
+        val listener = object : WindowFocusListener {
+            override fun windowGainedFocus(event: WindowEvent?) {
+                isForeground = true
             }
-        )
+
+            override fun windowLostFocus(event: WindowEvent?) {
+                isForeground = false
+            }
+        }
+        window.addWindowFocusListener(listener)
+        isForeground = window.isFocused
+        onDispose { window.removeWindowFocusListener(listener) }
+    }
+    CompositionLocalProvider(LocalAppInForeground provides isForeground) {
+        content()
     }
 }

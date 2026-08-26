@@ -50,4 +50,24 @@
     <string name="history_revision_count">%1$d calculations</string>
     <string name="history_revision_number">Version %1$d</string>
     <string name="history_changed_fields">Changed: %1$s</string>
+    <string name="history_apply_revision">Apply this version</string>
+    <string name="history_apply_short">Apply</string>
+    <string name="history_version_comparison">Version Diff Inspector</string>
+    <string name="history_select_versions_to_compare">Select revisions to compare and inspect diffs</string>
+    <string name="history_comparison_inputs">Input Parameters Diff</string>
+    <string name="history_comparison_outputs">Calculated Results Diff</string>
+    <string name="history_compare_with_prev">Compare with Previous</string>
+    <string name="history_compare_with_first">Compare with Initial</string>
+    <string name="history_filter_only_diff">Only changes</string>
+    <string name="history_filter_all_fields">All fields</string>
+    <string name="history_swap_comparison">Swap</string>
+    <string name="history_exit_comparison">Close Diff</string>
+    <string name="history_no_diff_found">All inputs and outputs are identical between selected versions</string>
+    <string name="history_tag_latest">Latest</string>
+    <string name="history_tag_initial">Initial</string>
+    <string name="history_tag_modified">Changed</string>
+    <string name="history_tag_unchanged">Unchanged</string>
+    <string name="history_compare_base">Base</string>
+    <string name="history_compare_target">Target</string>
+    <string name="history_compare_action">Compare</string>
 </resources>

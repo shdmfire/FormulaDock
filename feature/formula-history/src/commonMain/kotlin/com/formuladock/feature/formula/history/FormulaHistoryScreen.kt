@@ -28,6 +28,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.CompareArrows
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.SwapVert
+
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -37,6 +44,9 @@ import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import com.formuladock.core.designsystem.component.FdSearchBar
@@ -105,7 +115,6 @@ fun FormulaHistoryScreen(
                 .onSuccess {
                     histories = it
                     error = null
-                    selectedHistory = selectedHistory?.let { selected -> it.firstOrNull { item -> item.id == selected.id } }
                 }
                 .onFailure { error = it.message ?: "LOAD_FAILED" }
         }
@@ -143,7 +152,15 @@ fun FormulaHistoryScreen(
         ) { innerPadding ->
             CompactHistoryDetailContent(
                 history = history,
-                modifier = Modifier.padding(innerPadding).padding(horizontal = 8.dp)
+                modifier = Modifier.padding(innerPadding).padding(horizontal = 8.dp),
+                onApplyRevision = onEditCalculation?.let { editCalculation ->
+                    { revision ->
+                        editCalculation(
+                            history.formulaId,
+                            revision.inputs.associate { it.key to (it.rawValue ?: "") },
+                        )
+                    }
+                },
             )
         }
     } ?: Scaffold(
@@ -165,7 +182,13 @@ fun FormulaHistoryScreen(
             formulaId = formulaId,
             histories = histories,
             error = error,
-            onItemClick = { selectedHistory = it },
+            onItemClick = { summary ->
+                scope.launch {
+                    runCatching { repository.getHistory(summary.id) }
+                        .onSuccess { detail -> selectedHistory = detail }
+                        .onFailure { error = it.message ?: "LOAD_FAILED" }
+                }
+            },
             modifier = Modifier.padding(innerPadding).padding(horizontal = 8.dp)
         )
     }
@@ -307,13 +330,24 @@ fun CompactHistoryListContent(
 fun CompactHistoryDetailContent(
     history: CalculationHistory,
     modifier: Modifier = Modifier,
-    maxHeight: Dp = Dp.Unspecified
+    maxHeight: Dp = Dp.Unspecified,
+    onApplyRevision: ((CalculationRevision) -> Unit)? = null,
 ) {
+    var baseRevisionId by remember(history.id) { mutableStateOf<String?>(null) }
+    var targetRevisionId by remember(history.id) { mutableStateOf<String?>(null) }
+    var showOnlyDiff by remember(history.id) { mutableStateOf(false) }
+
+    val sortedRevisions = remember(history.revisions) {
+        history.revisions.sortedByDescending { it.revisionNo }
+    }
+    val baseRevision = history.revisions.firstOrNull { it.id == baseRevisionId }
+    val targetRevision = history.revisions.firstOrNull { it.id == targetRevisionId }
+
     LazyColumn(
         modifier = modifier
             .fillMaxWidth()
             .then(if (maxHeight != Dp.Unspecified) Modifier.heightIn(max = maxHeight) else Modifier),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
         contentPadding = PaddingValues(vertical = 4.dp),
     ) {
         item { HeaderSection(history) }
@@ -332,8 +366,71 @@ fun CompactHistoryDetailContent(
         } else {
             item { ErrorSection(history.errorMessage ?: "未知错误", history.errorFieldKey) }
         }
-        if (history.revisions.isNotEmpty()) {
-            item { RevisionTimelineSection(history.revisions) }
+
+        if (baseRevision != null && targetRevision != null && baseRevision.id != targetRevision.id) {
+            item {
+                RevisionDiffInspector(
+                    baseRevision = baseRevision,
+                    targetRevision = targetRevision,
+                    showOnlyDiff = showOnlyDiff,
+                    onToggleShowOnlyDiff = { showOnlyDiff = !showOnlyDiff },
+                    onSwap = {
+                        val temp = baseRevisionId
+                        baseRevisionId = targetRevisionId
+                        targetRevisionId = temp
+                    },
+                    onClose = {
+                        baseRevisionId = null
+                        targetRevisionId = null
+                    },
+                )
+            }
+        }
+
+        if (sortedRevisions.isNotEmpty()) {
+            item {
+                RevisionTimelineSection(
+                    revisions = sortedRevisions,
+                    baseRevisionId = baseRevisionId,
+                    targetRevisionId = targetRevisionId,
+                    onSelectRevisionForCompare = { revId ->
+                        when {
+                            baseRevisionId == null && targetRevisionId == null -> {
+                                baseRevisionId = revId
+                            }
+                            baseRevisionId == revId -> {
+                                baseRevisionId = null
+                            }
+                            targetRevisionId == revId -> {
+                                targetRevisionId = null
+                            }
+                            baseRevisionId != null && targetRevisionId == null -> {
+                                targetRevisionId = revId
+                            }
+                            else -> {
+                                targetRevisionId = revId
+                            }
+                        }
+                    },
+                    onQuickComparePrev = {
+                        val latest = sortedRevisions.firstOrNull()
+                        val prev = sortedRevisions.getOrNull(1)
+                        if (latest != null && prev != null) {
+                            baseRevisionId = prev.id
+                            targetRevisionId = latest.id
+                        }
+                    },
+                    onQuickCompareFirst = {
+                        val latest = sortedRevisions.firstOrNull()
+                        val first = sortedRevisions.lastOrNull()
+                        if (latest != null && first != null && latest.id != first.id) {
+                            baseRevisionId = first.id
+                            targetRevisionId = latest.id
+                        }
+                    },
+                    onApplyRevision = onApplyRevision,
+                )
+            }
         }
     }
 }
@@ -634,55 +731,861 @@ private fun HeaderSection(history: CalculationHistory) {
     }
 }
 
-@Composable
-private fun RevisionTimelineSection(revisions: List<CalculationRevision>) {
-    Column(Modifier.fillMaxWidth()) {
-        Text(
-            stringResource(Res.string.history_calculation_process),
-            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 2.dp, vertical = 4.dp),
+private enum class DeltaType {
+    POSITIVE, NEGATIVE, NEUTRAL
+}
+
+private data class FieldDiffItem(
+    val label: String,
+    val key: String,
+    val valueBase: String,
+    val valueTarget: String,
+    val deltaText: String?,
+    val deltaPercentText: String?,
+    val isModified: Boolean,
+    val deltaType: DeltaType,
+    val subText: String? = null,
+)
+
+private fun formatNumberDelta(delta: Double): String {
+    val sign = if (delta > 0) "+" else if (delta < 0) "-" else "±"
+    val absVal = kotlin.math.abs(delta)
+    val formatted = if (absVal == kotlin.math.floor(absVal) && absVal < 1e9) {
+        absVal.toLong().toString()
+    } else {
+        val factor = 100.0
+        val rounded = kotlin.math.round(absVal * factor) / factor
+        rounded.toString()
+    }
+    return "$sign$formatted"
+}
+
+private fun formatPercentDelta(percent: Double): String {
+    val sign = if (percent > 0) "+" else if (percent < 0) "-" else "±"
+    val absVal = kotlin.math.abs(percent)
+    val rounded = kotlin.math.round(absVal * 10.0) / 10.0
+    return "$sign$rounded%"
+}
+
+private fun buildInputsDiff(
+    inputsA: List<CalculationHistoryInput>,
+    inputsB: List<CalculationHistoryInput>,
+): List<FieldDiffItem> {
+    val mapA = inputsA.associateBy { it.key }
+    val mapB = inputsB.associateBy { it.key }
+    val keys = (inputsA.sortedBy { it.sortOrder }.map { it.key } +
+        inputsB.sortedBy { it.sortOrder }.map { it.key }).distinct()
+
+    return keys.map { key ->
+        val itemA = mapA[key]
+        val itemB = mapB[key]
+        val label = itemA?.label ?: itemB?.label ?: key
+        val valAStr = itemA?.displayComparisonValue().orEmpty().ifBlank { "—" }
+        val valBStr = itemB?.displayComparisonValue().orEmpty().ifBlank { "—" }
+        val isModified = valAStr != valBStr
+
+        val numA = itemA?.numericValue ?: itemA?.rawValue?.toDoubleOrNull()
+        val numB = itemB?.numericValue ?: itemB?.rawValue?.toDoubleOrNull()
+
+        var deltaText: String? = null
+        var deltaPercentText: String? = null
+        var deltaType = DeltaType.NEUTRAL
+
+        if (numA != null && numB != null) {
+            val diff = numB - numA
+            if (diff != 0.0) {
+                deltaText = formatNumberDelta(diff) + (itemB?.unit ?: itemA?.unit)?.let { " $it" }.orEmpty()
+                deltaPercentText = if (numA != 0.0) formatPercentDelta((diff / kotlin.math.abs(numA)) * 100.0) else null
+                deltaType = if (diff > 0) DeltaType.POSITIVE else DeltaType.NEGATIVE
+            }
+        }
+
+        FieldDiffItem(
+            label = label,
+            key = key,
+            valueBase = valAStr,
+            valueTarget = valBStr,
+            deltaText = deltaText,
+            deltaPercentText = deltaPercentText,
+            isModified = isModified,
+            deltaType = deltaType,
         )
-        revisions.sortedByDescending { it.revisionNo }.forEach { revision ->
-            val inputPreview = revision.inputs.sortedBy { it.sortOrder }
-                .joinToString(" · ") { "${it.label} ${it.rawValue ?: it.numericValue ?: "—"}${it.unit.orEmpty()}" }
-            val outputPreview = revision.outputs.sortedBy { it.sortOrder }
-                .joinToString(" · ") { "${it.label} ${it.formattedValue}${it.unit.orEmpty()}" }
-            Card(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f)),
-                shape = MaterialTheme.shapes.small,
+    }
+}
+
+private fun buildOutputsDiff(
+    outputsA: List<CalculationHistoryOutput>,
+    outputsB: List<CalculationHistoryOutput>,
+): List<FieldDiffItem> {
+    val mapA = outputsA.associateBy { it.key }
+    val mapB = outputsB.associateBy { it.key }
+    val keys = (outputsA.sortedBy { it.sortOrder }.map { it.key } +
+        outputsB.sortedBy { it.sortOrder }.map { it.key }).distinct()
+
+    return keys.map { key ->
+        val itemA = mapA[key]
+        val itemB = mapB[key]
+        val label = itemA?.label ?: itemB?.label ?: key
+        val valAStr = itemA?.let { "${it.formattedValue}${it.unit?.let { unit -> " $unit" }.orEmpty()}" } ?: "—"
+        val valBStr = itemB?.let { "${it.formattedValue}${it.unit?.let { unit -> " $unit" }.orEmpty()}" } ?: "—"
+        val isModified = valAStr != valBStr
+
+        val numA = itemA?.value
+        val numB = itemB?.value
+
+        var deltaText: String? = null
+        var deltaPercentText: String? = null
+        var deltaType = DeltaType.NEUTRAL
+
+        val expr = itemB?.expression ?: itemA?.expression
+        val unit = itemB?.unit ?: itemA?.unit
+
+        if (numA != null && numB != null) {
+            val diff = numB - numA
+            if (diff != 0.0) {
+                deltaText = formatNumberDelta(diff) + (!unit.isNullOrBlank()).let { if (it) " $unit" else "" }
+                deltaPercentText = if (numA != 0.0) formatPercentDelta((diff / kotlin.math.abs(numA)) * 100.0) else null
+                deltaType = if (diff > 0) DeltaType.POSITIVE else DeltaType.NEGATIVE
+            }
+        }
+
+        FieldDiffItem(
+            label = label,
+            key = key,
+            valueBase = valAStr,
+            valueTarget = valBStr,
+            deltaText = deltaText,
+            deltaPercentText = deltaPercentText,
+            isModified = isModified,
+            deltaType = deltaType,
+            subText = expr?.takeIf { it.isNotBlank() }?.let { "公式: $it" },
+        )
+    }
+}
+
+@Composable
+private fun RevisionDiffInspector(
+    baseRevision: CalculationRevision,
+    targetRevision: CalculationRevision,
+    showOnlyDiff: Boolean,
+    onToggleShowOnlyDiff: () -> Unit,
+    onSwap: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val inputsDiff = remember(baseRevision, targetRevision) {
+        buildInputsDiff(baseRevision.inputs, targetRevision.inputs)
+    }
+    val outputsDiff = remember(baseRevision, targetRevision) {
+        buildOutputsDiff(baseRevision.outputs, targetRevision.outputs)
+    }
+    val totalModifiedCount = inputsDiff.count { it.isModified } + outputsDiff.count { it.isModified }
+    val displayedInputs = if (showOnlyDiff) inputsDiff.filter { it.isModified } else inputsDiff
+    val displayedOutputs = if (showOnlyDiff) outputsDiff.filter { it.isModified } else outputsDiff
+
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f)
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+    ) {
+        Column(Modifier.padding(10.dp)) {
+            // Inspector Header
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(
-                            stringResource(Res.string.history_revision_number, revision.revisionNo),
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                        modifier = Modifier.size(26.dp),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.CompareArrows,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        stringResource(Res.string.history_version_comparison),
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onSwap,
+                        modifier = Modifier.size(28.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.SwapVert,
+                            contentDescription = stringResource(Res.string.history_swap_comparison),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp),
                         )
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    IconButton(
+                        onClick = onClose,
+                        modifier = Modifier.size(28.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = stringResource(Res.string.history_exit_comparison),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            // Version Flow Badges
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                // Base Badge
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(4.dp),
+                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                    ) {
                         Text(
-                            formatEpochMillis(revision.createdAt),
+                            stringResource(Res.string.history_compare_base),
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        stringResource(Res.string.history_revision_number, baseRevision.revisionNo),
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                    )
+                }
+
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp),
+                )
+
+                // Target Badge
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = RoundedCornerShape(4.dp),
+                    ) {
+                        Text(
+                            stringResource(Res.string.history_compare_target),
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        stringResource(Res.string.history_revision_number, targetRevision.revisionNo),
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(6.dp))
+
+            // Filter Chip for showing only changes vs all
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FilterChip(
+                    selected = showOnlyDiff,
+                    onClick = onToggleShowOnlyDiff,
+                    label = {
+                        Text(
+                            if (showOnlyDiff) {
+                                stringResource(Res.string.history_filter_only_diff)
+                            } else {
+                                stringResource(Res.string.history_filter_all_fields)
+                            } + " ($totalModifiedCount)",
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    },
+                    modifier = Modifier.height(26.dp),
+                )
+            }
+
+            Spacer(Modifier.height(6.dp))
+
+            if (totalModifiedCount == 0 && showOnlyDiff) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.3f)
+                    ),
+                ) {
+                    Row(
+                        Modifier.padding(12.dp).fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = null,
+                            tint = Color(0xFF10B981),
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            stringResource(Res.string.history_no_diff_found),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            } else {
+                if (displayedInputs.isNotEmpty()) {
+                    Text(
+                        stringResource(Res.string.history_comparison_inputs),
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 4.dp),
+                    )
+                    displayedInputs.forEach { item ->
+                        DiffFieldItem(item)
+                    }
+                }
+
+                if (displayedOutputs.isNotEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        stringResource(Res.string.history_comparison_outputs),
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 4.dp),
+                    )
+                    displayedOutputs.forEach { item ->
+                        DiffFieldItem(item)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun CalculationHistoryInput.displayComparisonValue(): String {
+    val value = rawValue ?: numericValue?.toString() ?: return "—"
+    return "$value${unit?.let { " $it" }.orEmpty()}"
+}
+
+@Composable
+private fun DiffFieldItem(item: FieldDiffItem) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (item.isModified) {
+                MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.55f)
+            } else {
+                MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.25f)
+            }
+        ),
+        border = BorderStroke(
+            width = if (item.isModified) 1.dp else 0.5.dp,
+            color = if (item.isModified) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+            } else {
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+            }
+        ),
+    ) {
+        Column(Modifier.padding(horizontal = 8.dp, vertical = 5.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = item.label,
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Spacer(Modifier.width(6.dp))
+                if (item.isModified) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                        shape = RoundedCornerShape(4.dp),
+                    ) {
+                        Text(
+                            text = stringResource(Res.string.history_tag_modified),
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 0.5.dp),
+                        )
+                    }
+                } else {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(4.dp),
+                    ) {
+                        Text(
+                            text = stringResource(Res.string.history_tag_unchanged),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 0.5.dp),
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(3.dp))
+
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f, fill = false),
+                ) {
+                    Text(
+                        text = item.valueBase,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(horizontal = 4.dp).size(12.dp),
+                    )
+                    Text(
+                        text = item.valueTarget,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = if (item.isModified) FontWeight.Bold else FontWeight.Normal,
+                            color = if (item.isModified) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+
+                if (item.deltaText != null) {
+                    Spacer(Modifier.width(6.dp))
+                    val (badgeBg, badgeText) = when (item.deltaType) {
+                        DeltaType.POSITIVE -> Color(0xFF10B981).copy(alpha = 0.15f) to Color(0xFF059669)
+                        DeltaType.NEGATIVE -> Color(0xFFEF4444).copy(alpha = 0.15f) to Color(0xFFDC2626)
+                        DeltaType.NEUTRAL -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f) to MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                    Surface(
+                        color = badgeBg,
+                        shape = RoundedCornerShape(4.dp),
+                    ) {
+                        Text(
+                            text = if (item.deltaPercentText != null) "${item.deltaText} (${item.deltaPercentText})" else item.deltaText,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                            ),
+                            color = badgeText,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                        )
+                    }
+                }
+            }
+
+            if (!item.subText.isNullOrBlank()) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = item.subText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RevisionTimelineSection(
+    revisions: List<CalculationRevision>,
+    baseRevisionId: String?,
+    targetRevisionId: String?,
+    onSelectRevisionForCompare: (String) -> Unit,
+    onQuickComparePrev: () -> Unit,
+    onQuickCompareFirst: () -> Unit,
+    onApplyRevision: ((CalculationRevision) -> Unit)?,
+) {
+    val maxRevNo = revisions.maxOfOrNull { it.revisionNo } ?: 0
+    val minRevNo = revisions.minOfOrNull { it.revisionNo } ?: 0
+
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                stringResource(Res.string.history_calculation_process),
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                stringResource(Res.string.history_revision_count, revisions.size),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+
+        if (revisions.size >= 2) {
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedButton(
+                    onClick = onQuickComparePrev,
+                    modifier = Modifier.height(28.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
+                ) {
+                    Icon(
+                        Icons.Default.Bolt,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        stringResource(Res.string.history_compare_with_prev),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+
+                if (revisions.size >= 3) {
+                    OutlinedButton(
+                        onClick = onQuickCompareFirst,
+                        modifier = Modifier.height(28.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                    ) {
+                        Icon(
+                            Icons.Default.History,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            stringResource(Res.string.history_compare_with_first),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    if (revision.changedKeys.isNotEmpty()) {
-                        Text(
-                            stringResource(Res.string.history_changed_fields, revision.changedKeys.joinToString(", ")),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+        }
+
+        revisions.forEachIndexed { index, revision ->
+            val isFirstItem = index == 0
+            val isLastItem = index == revisions.lastIndex
+            val isLatest = revision.revisionNo == maxRevNo
+            val isInitial = revision.revisionNo == minRevNo
+            val isBase = revision.id == baseRevisionId
+            val isTarget = revision.id == targetRevisionId
+            val isSelected = isBase || isTarget
+
+            val inputPreview = revision.inputs.sortedBy { it.sortOrder }
+                .joinToString(" · ") { "${it.label} ${it.rawValue ?: it.numericValue ?: "—"}${it.unit.orEmpty()}" }
+            val outputPreview = revision.outputs.sortedBy { it.sortOrder }
+                .joinToString(" · ") { "${it.label} ${it.formattedValue}${it.unit.orEmpty()}" }
+
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Box(
+                    modifier = Modifier.width(24.dp).heightIn(min = 72.dp),
+                    contentAlignment = Alignment.TopCenter,
+                ) {
+                    androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                        val centerX = size.width / 2
+                        val nodeY = 14.dp.toPx()
+                        val lineColor = Color.Gray.copy(alpha = 0.25f)
+                        val strokeW = 1.5.dp.toPx()
+
+                        if (!isFirstItem) {
+                            drawLine(
+                                color = lineColor,
+                                start = androidx.compose.ui.geometry.Offset(centerX, 0f),
+                                end = androidx.compose.ui.geometry.Offset(centerX, nodeY),
+                                strokeWidth = strokeW,
+                            )
+                        }
+                        if (!isLastItem) {
+                            drawLine(
+                                color = lineColor,
+                                start = androidx.compose.ui.geometry.Offset(centerX, nodeY),
+                                end = androidx.compose.ui.geometry.Offset(centerX, size.height),
+                                strokeWidth = strokeW,
+                            )
+                        }
                     }
-                    Text(inputPreview, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    if (outputPreview.isNotBlank()) {
+
+                    Box(
+                        modifier = Modifier
+                            .padding(top = 8.dp)
+                            .size(12.dp)
+                            .background(
+                                color = when {
+                                    isTarget -> MaterialTheme.colorScheme.primary
+                                    isBase -> MaterialTheme.colorScheme.surface
+                                    isLatest -> MaterialTheme.colorScheme.primary
+                                    else -> MaterialTheme.colorScheme.surfaceVariant
+                                },
+                                shape = CircleShape,
+                            )
+                            .border(
+                                width = if (isSelected) 2.dp else 1.dp,
+                                color = if (isSelected || isLatest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                                shape = CircleShape,
+                            )
+                    )
+                }
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 6.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isSelected) {
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.22f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                        }
+                    ),
+                    border = BorderStroke(
+                        width = if (isSelected) 1.dp else 0.5.dp,
+                        color = if (isSelected) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                        } else {
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
+                        }
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                ) {
+                    Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                stringResource(Res.string.history_revision_number, revision.revisionNo),
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            )
+                            Spacer(Modifier.width(6.dp))
+
+                            if (isLatest) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                    shape = RoundedCornerShape(4.dp),
+                                ) {
+                                    Text(
+                                        stringResource(Res.string.history_tag_latest),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 0.5.dp),
+                                    )
+                                }
+                            } else if (isInitial) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    shape = RoundedCornerShape(4.dp),
+                                ) {
+                                    Text(
+                                        stringResource(Res.string.history_tag_initial),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 0.5.dp),
+                                    )
+                                }
+                            }
+
+                            if (isBase) {
+                                Spacer(Modifier.width(4.dp))
+                                Surface(
+                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                    shape = RoundedCornerShape(4.dp),
+                                ) {
+                                    Text(
+                                        stringResource(Res.string.history_compare_base),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 0.5.dp),
+                                    )
+                                }
+                            }
+                            if (isTarget) {
+                                Spacer(Modifier.width(4.dp))
+                                Surface(
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    shape = RoundedCornerShape(4.dp),
+                                ) {
+                                    Text(
+                                        stringResource(Res.string.history_compare_target),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 0.5.dp),
+                                    )
+                                }
+                            }
+
+                            Spacer(Modifier.weight(1f))
+                            Text(
+                                formatEpochMillis(revision.updatedAt),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            )
+                        }
+
+                        if (revision.changedKeys.isNotEmpty()) {
+                            Spacer(Modifier.height(3.dp))
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    "Δ ",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                Text(
+                                    revision.changedKeys.joinToString(", "),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(2.dp))
                         Text(
-                            outputPreview,
-                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.primary,
+                            inputPreview,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                            ),
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
+
+                        if (outputPreview.isNotBlank()) {
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                outputPreview,
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+
+                        Spacer(Modifier.height(6.dp))
+
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            OutlinedButton(
+                                onClick = { onSelectRevisionForCompare(revision.id) },
+                                modifier = Modifier.height(26.dp),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                shape = RoundedCornerShape(6.dp),
+                                colors = if (isSelected) {
+                                    androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                                    )
+                                } else androidx.compose.material3.ButtonDefaults.outlinedButtonColors(),
+                                border = BorderStroke(
+                                    0.5.dp,
+                                    if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                                ),
+                            ) {
+                                Icon(
+                                    imageVector = if (isSelected) Icons.Default.Check else Icons.AutoMirrored.Filled.CompareArrows,
+                                    contentDescription = null,
+                                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(13.dp),
+                                )
+                                Spacer(Modifier.width(3.dp))
+                                Text(
+                                    text = when {
+                                        isBase -> stringResource(Res.string.history_compare_base)
+                                        isTarget -> stringResource(Res.string.history_compare_target)
+                                        else -> stringResource(Res.string.history_compare_action)
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+
+                            if (onApplyRevision != null) {
+                                FilledTonalButton(
+                                    onClick = { onApplyRevision(revision) },
+                                    modifier = Modifier.height(26.dp),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                    shape = RoundedCornerShape(6.dp),
+                                ) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.Undo,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(13.dp),
+                                    )
+                                    Spacer(Modifier.width(3.dp))
+                                    Text(
+                                        stringResource(Res.string.history_apply_short),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }

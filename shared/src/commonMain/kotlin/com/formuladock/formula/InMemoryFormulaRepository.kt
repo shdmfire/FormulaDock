@@ -35,6 +35,7 @@ class InMemoryCalculationHistoryRepository : CalculationHistoryRepository {
             .sortedByDescending { it.updatedAt }
             .drop(offset.toInt())
             .take(limit.toInt())
+            .map { it.copy(revisions = emptyList()) }
     }
 
     override suspend fun getHistoriesByFormulaId(formulaId: String, limit: Long, offset: Long): List<CalculationHistory> {
@@ -42,6 +43,7 @@ class InMemoryCalculationHistoryRepository : CalculationHistoryRepository {
             .sortedByDescending { it.updatedAt }
             .drop(offset.toInt())
             .take(limit.toInt())
+            .map { it.copy(revisions = emptyList()) }
     }
 
     override suspend fun getHistory(id: String): CalculationHistory? = histories[id]
@@ -116,6 +118,38 @@ class InMemoryCalculationHistoryRepository : CalculationHistoryRepository {
             sessionStatus = CalculationSessionStatus.ACTIVE,
             revisionCount = revisionNo,
             revisions = listOf(revision) + session.revisions,
+        )
+    }
+
+    override suspend fun replaceLatestRevision(
+        sessionId: String,
+        history: CalculationHistory,
+        revisionNo: Int,
+        changedKeys: Set<String>,
+    ) {
+        val session = histories[sessionId] ?: return
+        val replacement = CalculationRevision(
+            id = history.id,
+            sessionId = sessionId,
+            revisionNo = revisionNo,
+            status = history.status,
+            inputs = history.inputs,
+            outputs = history.outputs,
+            changedKeys = changedKeys,
+            errorMessage = history.errorMessage,
+            errorFieldKey = history.errorFieldKey,
+            createdAt = history.createdAt,
+            updatedAt = history.updatedAt,
+        )
+        histories[sessionId] = session.copy(
+            status = history.status,
+            inputs = history.inputs,
+            outputs = history.outputs,
+            errorMessage = history.errorMessage,
+            errorFieldKey = history.errorFieldKey,
+            updatedAt = history.updatedAt,
+            sessionStatus = CalculationSessionStatus.ACTIVE,
+            revisions = listOf(replacement) + session.revisions.filterNot { it.revisionNo == revisionNo },
         )
     }
 

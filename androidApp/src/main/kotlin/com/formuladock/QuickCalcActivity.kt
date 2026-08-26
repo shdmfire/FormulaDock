@@ -18,6 +18,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,11 +32,14 @@ import com.formuladock.core.data.history.CalculationHistoryRepository
 import com.formuladock.core.data.history.SqlDelightCalculationHistoryRepository
 import com.formuladock.core.database.DriverFactory
 import com.formuladock.core.database.createDatabase
+import com.formuladock.core.designsystem.component.LocalAppInForeground
 import com.formuladock.core.designsystem.theme.FormulaDockTheme
 import com.formuladock.core.model.formula.model.BuiltinFormulas
 import com.formuladock.feature.formula.panel.FormulaCalculatorPanel
 
 class QuickCalcActivity : ComponentActivity() {
+    private val appInForeground = mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         disableOpenAnimation()
@@ -45,14 +50,26 @@ class QuickCalcActivity : ComponentActivity() {
         val historyRepository = SqlDelightCalculationHistoryRepository(db)
 
         setContent {
-            FormulaDockTheme {
-                QuickCalcScreen(
-                    repository = repository,
-                    historyRepository = historyRepository,
-                    onDismiss = { finishWithoutAnimation() }
-                )
+            CompositionLocalProvider(LocalAppInForeground provides appInForeground.value) {
+                FormulaDockTheme {
+                    QuickCalcScreen(
+                        repository = repository,
+                        historyRepository = historyRepository,
+                        onDismiss = { finishWithoutAnimation() }
+                    )
+                }
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        appInForeground.value = true
+    }
+
+    override fun onStop() {
+        appInForeground.value = false
+        super.onStop()
     }
 
     private fun finishWithoutAnimation() {
