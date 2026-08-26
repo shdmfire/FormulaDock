@@ -45,4 +45,9 @@
     <string name="action_remove_filter">Remove Filter</string>
     <string name="filter_note_only">Notes only</string>
     <string name="history_all_formulas">All Formulas</string>
+    <string name="history_final_result">Final result</string>
+    <string name="history_calculation_process">Calculation process</string>
+    <string name="history_revision_count">%1$d calculations</string>
+    <string name="history_revision_number">Version %1$d</string>
+    <string name="history_changed_fields">Changed: %1$s</string>
 </resources>

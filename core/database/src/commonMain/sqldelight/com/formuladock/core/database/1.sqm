@@ -1,0 +1,73 @@
+CREATE TABLE calculation_session (
+    id TEXT NOT NULL PRIMARY KEY,
+    formula_id TEXT NOT NULL,
+    formula_title TEXT NOT NULL,
+    formula_description TEXT,
+    formula_is_builtin INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL,
+    started_at INTEGER NOT NULL,
+    last_active_at INTEGER NOT NULL,
+    ended_at INTEGER,
+    final_revision_id TEXT,
+    revision_count INTEGER NOT NULL DEFAULT 0,
+    note TEXT,
+
+    CHECK (status IN ('ACTIVE', 'PAUSED', 'CLOSED'))
+);
+
+CREATE INDEX calculation_session_formula_id_index
+ON calculation_session(formula_id);
+
+CREATE INDEX calculation_session_last_active_at_index
+ON calculation_session(last_active_at DESC);
+
+CREATE INDEX calculation_session_status_index
+ON calculation_session(status);
+
+ALTER TABLE calculation_history
+ADD COLUMN session_id TEXT REFERENCES calculation_session(id) ON DELETE CASCADE;
+
+ALTER TABLE calculation_history
+ADD COLUMN revision_no INTEGER NOT NULL DEFAULT 1;
+
+ALTER TABLE calculation_history
+ADD COLUMN changed_keys TEXT;
+
+INSERT INTO calculation_session(
+    id,
+    formula_id,
+    formula_title,
+    formula_description,
+    formula_is_builtin,
+    status,
+    started_at,
+    last_active_at,
+    ended_at,
+    final_revision_id,
+    revision_count,
+    note
+)
+SELECT
+    'session_' || id,
+    formula_id,
+    formula_title,
+    formula_description,
+    formula_is_builtin,
+    'CLOSED',
+    created_at,
+    updated_at,
+    updated_at,
+    id,
+    1,
+    note
+FROM calculation_history;
+
+UPDATE calculation_history
+SET session_id = 'session_' || id,
+    revision_no = 1;
+
+CREATE INDEX calculation_history_session_id_index
+ON calculation_history(session_id);
+
+CREATE UNIQUE INDEX calculation_history_session_revision_index
+ON calculation_history(session_id, revision_no);

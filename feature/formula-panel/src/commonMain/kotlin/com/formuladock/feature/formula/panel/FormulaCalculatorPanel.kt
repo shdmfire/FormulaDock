@@ -32,6 +32,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -41,6 +42,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.formuladock.core.data.formula.FormulaRepository
 import com.formuladock.core.model.formula.model.FormulaDefinition
+import com.formuladock.feature.formula.run.CalculationSessionRecorder
 import com.formuladock.feature.formula.run.CompactCalculatorContent
 import com.formuladock.feature.formula.run.rememberFormulaCalculatorState
 import com.formuladock.core.domain.formula.EvaluateFormulaUseCase
@@ -52,8 +54,8 @@ import com.formuladock.core.model.history.model.CalculationHistory
 import com.formuladock.core.domain.history.GetCalculationHistoryListUseCase
 import com.formuladock.feature.formula.history.CompactHistoryListContent
 import com.formuladock.feature.formula.history.CompactHistoryDetailContent
-import com.formuladock.feature.formula.run.saveSuccessfulRun
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.flowOf
 import com.formuladock.core.preferences.FormulaDockPreferences
 import kotlin.time.Duration.Companion.milliseconds
@@ -196,12 +198,56 @@ fun QuickCalculatorContent(
 ) {
     val evaluateFormula = remember { EvaluateFormulaUseCase(DefaultFormulaEngine()) }
     val calculatorState = rememberFormulaCalculatorState(formula, evaluateFormula)
+    val scope = rememberCoroutineScope()
+    val sessionRecorder = remember(historyRepository, formula.id) {
+        historyRepository?.let(::CalculationSessionRecorder)
+    }
+    var sessionReady by remember(historyRepository, formula.id) { mutableStateOf(false) }
 
-    LaunchedEffect(formula, calculatorState.inputValues, calculatorState.result, historyRepository) {
+    LaunchedEffect(sessionRecorder, formula.id) {
+        sessionReady = false
+        sessionRecorder?.startOrResume(formula)
+        sessionReady = sessionRecorder != null
+    }
+
+    LaunchedEffect(formula, calculatorState.inputValues, calculatorState.result, sessionReady) {
         val result = calculatorState.result
-        if (historyRepository != null && result is FormulaEvaluationResult.Success) {
+        if (sessionReady && result is FormulaEvaluationResult.Success) {
             delay(1000L.milliseconds)
-            historyRepository.saveSuccessfulRun(formula, calculatorState.inputValues, result)
+            sessionRecorder?.commit(formula, calculatorState.inputValues, result)
+        }
+    }
+
+    val commitCurrentDraft: () -> Unit = {
+        if (sessionReady) {
+            scope.launch {
+                val result = calculatorState.result
+                if (result is FormulaEvaluationResult.Success) {
+                    sessionRecorder?.commit(formula, calculatorState.inputValues, result)
+                }
+            }
+        }
+    }
+    val pauseAndSwitch: () -> Unit = {
+        scope.launch {
+            val result = calculatorState.result
+            if (result is FormulaEvaluationResult.Success) {
+                sessionRecorder?.commit(formula, calculatorState.inputValues, result)
+            }
+            sessionRecorder?.pause()
+            onTitleClick()
+        }
+    }
+    val closeSessionAndPanel: (() -> Unit)? = onClose?.let { closePanel ->
+        {
+            scope.launch {
+                val result = calculatorState.result
+                if (result is FormulaEvaluationResult.Success) {
+                    sessionRecorder?.commit(formula, calculatorState.inputValues, result)
+                }
+                sessionRecorder?.close()
+                closePanel()
+            }
         }
     }
 
@@ -320,7 +366,7 @@ fun QuickCalculatorContent(
 
                     // 2. “切换”胶囊按钮（主色调）
                     Surface(
-                        onClick = onTitleClick,
+                        onClick = pauseAndSwitch,
                         shape = RoundedCornerShape(16.dp),
                         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
                     ) {
@@ -334,9 +380,9 @@ fun QuickCalculatorContent(
                 }
 
                 // C. 极简关闭按钮（高度进一步微缩至 24.dp）
-                if (onClose != null) {
+                if (closeSessionAndPanel != null) {
                     IconButton(
-                        onClick = onClose,
+                        onClick = closeSessionAndPanel,
                         modifier = Modifier.size(24.dp)
                     ) {
                         Icon(
@@ -360,6 +406,7 @@ fun QuickCalculatorContent(
                         inputValues = calculatorState.inputValues,
                         result = calculatorState.result,
                         onInputValuesChange = calculatorState::updateInputValues,
+                        onCommitRequested = commitCurrentDraft,
                     )
                 }
                 entry<QuickCalcRoute.HistoryList> {

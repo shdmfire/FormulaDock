@@ -74,6 +74,7 @@ import com.formuladock.core.domain.history.GetCalculationHistoryListUseCase
 import com.formuladock.core.model.history.model.CalculationHistory
 import com.formuladock.core.model.history.model.CalculationHistoryInput
 import com.formuladock.core.model.history.model.CalculationHistoryOutput
+import com.formuladock.core.model.history.model.CalculationRevision
 import com.formuladock.core.model.history.model.CalculationStatus
 import kotlinx.coroutines.launch
 import kotlin.time.Instant
@@ -317,11 +318,22 @@ fun CompactHistoryDetailContent(
     ) {
         item { HeaderSection(history) }
         if (!history.note.isNullOrBlank()) item { NoteSection(history.note!!) }
+        item {
+            Text(
+                stringResource(Res.string.history_final_result),
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp),
+            )
+        }
         if (history.inputs.isNotEmpty()) item { InputsSection(history.inputs) }
         if (history.status == CalculationStatus.SUCCESS) {
             if (history.outputs.isNotEmpty()) item { OutputsSection(history.outputs) }
         } else {
             item { ErrorSection(history.errorMessage ?: "未知错误", history.errorFieldKey) }
+        }
+        if (history.revisions.isNotEmpty()) {
+            item { RevisionTimelineSection(history.revisions) }
         }
     }
 }
@@ -582,11 +594,22 @@ private fun HistoryListItem(history: CalculationHistory, onClick: () -> Unit) {
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text(formatEpochMillis(history.createdAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "${formatEpochMillis(history.startedAt)} – ${formatEpochMillis(history.updatedAt)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                     if (!history.note.isNullOrBlank()) Icon(Icons.Default.Edit, stringResource(Res.string.history_has_note), modifier = Modifier.size(12.dp), tint = MaterialTheme.colorScheme.primary)
                 }
                 Spacer(Modifier.height(2.dp))
                 Text(preview, style = MaterialTheme.typography.bodySmall, color = if (isSuccess) Color.Unspecified else MaterialTheme.colorScheme.error, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    stringResource(Res.string.history_revision_count, history.revisionCount),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
             }
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
         }
@@ -606,6 +629,62 @@ private fun HeaderSection(history: CalculationHistory) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(if (history.formulaIsBuiltin) stringResource(Res.string.badge_builtin) else stringResource(Res.string.badge_custom), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(formatEpochMillis(history.createdAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RevisionTimelineSection(revisions: List<CalculationRevision>) {
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            stringResource(Res.string.history_calculation_process),
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 2.dp, vertical = 4.dp),
+        )
+        revisions.sortedByDescending { it.revisionNo }.forEach { revision ->
+            val inputPreview = revision.inputs.sortedBy { it.sortOrder }
+                .joinToString(" · ") { "${it.label} ${it.rawValue ?: it.numericValue ?: "—"}${it.unit.orEmpty()}" }
+            val outputPreview = revision.outputs.sortedBy { it.sortOrder }
+                .joinToString(" · ") { "${it.label} ${it.formattedValue}${it.unit.orEmpty()}" }
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f)),
+                shape = MaterialTheme.shapes.small,
+            ) {
+                Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(
+                            stringResource(Res.string.history_revision_number, revision.revisionNo),
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        )
+                        Text(
+                            formatEpochMillis(revision.createdAt),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (revision.changedKeys.isNotEmpty()) {
+                        Text(
+                            stringResource(Res.string.history_changed_fields, revision.changedKeys.joinToString(", ")),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Text(inputPreview, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    if (outputPreview.isNotBlank()) {
+                        Text(
+                            outputPreview,
+                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
             }
         }
     }

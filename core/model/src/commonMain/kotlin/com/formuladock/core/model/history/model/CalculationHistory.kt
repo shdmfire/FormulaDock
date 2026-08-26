@@ -14,4 +14,9 @@ data class CalculationHistory(
     val note: String?,
     val createdAt: Long,
     val updatedAt: Long,
+    val sessionStatus: CalculationSessionStatus = CalculationSessionStatus.CLOSED,
+    val startedAt: Long = createdAt,
+    val endedAt: Long? = updatedAt,
+    val revisionCount: Int = 1,
+    val revisions: List<CalculationRevision> = emptyList(),
 )

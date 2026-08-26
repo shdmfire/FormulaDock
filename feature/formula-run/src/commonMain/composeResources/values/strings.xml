@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <resources>
     <string name="run_share_copied">Formula and current calculation results copied to clipboard</string>
+    <string name="run_menu_finish">Finish Calculation</string>
     <string name="run_menu_duplicate">Duplicate Formula</string>
     <string name="run_menu_export">Export Formula</string>
     <string name="run_menu_delete">Delete Formula</string>

@@ -45,4 +45,9 @@
     <string name="action_remove_filter">移除筛选</string>
     <string name="filter_note_only">仅含备注</string>
     <string name="history_all_formulas">全部公式</string>
+    <string name="history_final_result">最终结果</string>
+    <string name="history_calculation_process">计算过程</string>
+    <string name="history_revision_count">共 %1$d 次计算</string>
+    <string name="history_revision_number">版本 %1$d</string>
+    <string name="history_changed_fields">修改字段：%1$s</string>
 </resources>

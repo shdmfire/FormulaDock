@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <resources>
     <string name="run_share_copied">公式及当前计算结果已复制到剪贴板</string>
+    <string name="run_menu_finish">完成计算</string>
     <string name="run_menu_duplicate">复制公式</string>
     <string name="run_menu_export">导出公式</string>
     <string name="run_menu_delete">删除公式</string>

@@ -6,6 +6,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
@@ -61,11 +62,49 @@ fun FormulaRunScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
     var showExportSheet by remember { mutableStateOf(false) }
+    val sessionRecorder = remember(historyRepository, formula.id) {
+        CalculationSessionRecorder(historyRepository)
+    }
+    var sessionReady by remember(historyRepository, formula.id) { mutableStateOf(false) }
 
-    LaunchedEffect(formula, inputValues, result) {
-        if (result is FormulaEvaluationResult.Success) {
+    LaunchedEffect(sessionRecorder, formula.id) {
+        sessionReady = false
+        sessionRecorder.startOrResume(formula)
+        sessionReady = true
+    }
+
+    LaunchedEffect(formula, inputValues, result, sessionReady) {
+        if (sessionReady && result is FormulaEvaluationResult.Success) {
             delay(1000L.milliseconds)
-            historyRepository.saveSuccessfulRun(formula, inputValues, result)
+            sessionRecorder.commit(formula, inputValues, result)
+        }
+    }
+
+    val commitCurrentDraft: () -> Unit = {
+        if (sessionReady) {
+            scope.launch {
+                (result as? FormulaEvaluationResult.Success)?.let {
+                    sessionRecorder.commit(formula, inputValues, it)
+                }
+            }
+        }
+    }
+    val pauseAndLeave: () -> Unit = {
+        scope.launch {
+            (result as? FormulaEvaluationResult.Success)?.let {
+                sessionRecorder.commit(formula, inputValues, it)
+            }
+            sessionRecorder.pause()
+            onBack()
+        }
+    }
+    val finishAndLeave: () -> Unit = {
+        scope.launch {
+            (result as? FormulaEvaluationResult.Success)?.let {
+                sessionRecorder.commit(formula, inputValues, it)
+            }
+            sessionRecorder.close()
+            onBack()
         }
     }
 
@@ -99,7 +138,7 @@ fun FormulaRunScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = pauseAndLeave) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
@@ -138,6 +177,19 @@ fun FormulaRunScreen(
                                 expanded = showMenu,
                                 onDismissRequest = { showMenu = false }
                             ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(Res.string.run_menu_finish)) },
+                                    onClick = {
+                                        showMenu = false
+                                        finishAndLeave()
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = "Finish calculation"
+                                        )
+                                    }
+                                )
                                 DropdownMenuItem(
                                     text = { Text(stringResource(Res.string.run_menu_duplicate)) },
                                     onClick = {
@@ -217,6 +269,7 @@ fun FormulaRunScreen(
                 inputValues = inputValues,
                 result = result,
                 onInputValuesChange = { inputValues = it },
+                onCommitRequested = commitCurrentDraft,
             )
         }
     }
@@ -230,7 +283,13 @@ fun FormulaRunScreen(
                 TextButton(
                     onClick = {
                         showDeleteConfirmation = false
-                        onDelete()
+                        scope.launch {
+                            (result as? FormulaEvaluationResult.Success)?.let {
+                                sessionRecorder.commit(formula, inputValues, it)
+                            }
+                            sessionRecorder.close()
+                            onDelete()
+                        }
                     }
                 ) {
                     Text(stringResource(Res.string.run_delete_confirm_action), color = MaterialTheme.colorScheme.error)

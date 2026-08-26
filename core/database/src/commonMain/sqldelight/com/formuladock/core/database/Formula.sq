@@ -150,8 +150,37 @@ deleteFormulaById:
 DELETE FROM formula
 WHERE id = ?;
 
+CREATE TABLE calculation_session (
+    id TEXT NOT NULL PRIMARY KEY,
+    formula_id TEXT NOT NULL,
+    formula_title TEXT NOT NULL,
+    formula_description TEXT,
+    formula_is_builtin INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL,
+    started_at INTEGER NOT NULL,
+    last_active_at INTEGER NOT NULL,
+    ended_at INTEGER,
+    final_revision_id TEXT,
+    revision_count INTEGER NOT NULL DEFAULT 0,
+    note TEXT,
+
+    CHECK (status IN ('ACTIVE', 'PAUSED', 'CLOSED'))
+);
+
+CREATE INDEX calculation_session_formula_id_index
+ON calculation_session(formula_id);
+
+CREATE INDEX calculation_session_last_active_at_index
+ON calculation_session(last_active_at DESC);
+
+CREATE INDEX calculation_session_status_index
+ON calculation_session(status);
+
 CREATE TABLE calculation_history (
     id TEXT NOT NULL PRIMARY KEY,
+    session_id TEXT REFERENCES calculation_session(id) ON DELETE CASCADE,
+    revision_no INTEGER NOT NULL DEFAULT 1,
+    changed_keys TEXT,
     formula_id TEXT NOT NULL,
     formula_title TEXT NOT NULL,
     formula_description TEXT,
@@ -180,6 +209,12 @@ CREATE TABLE calculation_history (
 
 CREATE INDEX calculation_history_formula_id_index
 ON calculation_history(formula_id);
+
+CREATE INDEX calculation_history_session_id_index
+ON calculation_history(session_id);
+
+CREATE UNIQUE INDEX calculation_history_session_revision_index
+ON calculation_history(session_id, revision_no);
 
 CREATE INDEX calculation_history_created_at_index
 ON calculation_history(created_at DESC);
@@ -226,25 +261,54 @@ ON calculation_history_output(history_id);
 
 countCalculationHistories:
 SELECT COUNT(*)
-FROM calculation_history;
+FROM calculation_session
+WHERE status = 'CLOSED';
 
 selectCalculationHistories:
 SELECT *
-FROM calculation_history
-ORDER BY created_at DESC
+FROM calculation_session
+WHERE status = 'CLOSED'
+ORDER BY last_active_at DESC
 LIMIT ? OFFSET ?;
 
 selectCalculationHistoriesByFormulaId:
 SELECT *
-FROM calculation_history
-WHERE formula_id = ?
-ORDER BY created_at DESC
+FROM calculation_session
+WHERE formula_id = ? AND status = 'CLOSED'
+ORDER BY last_active_at DESC
 LIMIT ? OFFSET ?;
 
 selectCalculationHistoryById:
 SELECT *
+FROM calculation_session
+WHERE id = ?;
+
+selectResumableCalculationSession:
+SELECT *
+FROM calculation_session
+WHERE formula_id = ?
+  AND status IN ('ACTIVE', 'PAUSED')
+  AND last_active_at >= ?
+ORDER BY last_active_at DESC
+LIMIT 1;
+
+selectCalculationRevisionById:
+SELECT *
 FROM calculation_history
 WHERE id = ?;
+
+selectCalculationRevisionsBySessionId:
+SELECT *
+FROM calculation_history
+WHERE session_id = ?
+ORDER BY revision_no DESC;
+
+selectLatestCalculationRevision:
+SELECT *
+FROM calculation_history
+WHERE session_id = ?
+ORDER BY revision_no DESC
+LIMIT 1;
 
 selectCalculationHistoryInputs:
 SELECT *
@@ -258,9 +322,36 @@ FROM calculation_history_output
 WHERE history_id = ?
 ORDER BY sort_order ASC;
 
+insertCalculationSession:
+INSERT INTO calculation_session(
+    id,
+    formula_id,
+    formula_title,
+    formula_description,
+    formula_is_builtin,
+    status,
+    started_at,
+    last_active_at,
+    ended_at,
+    final_revision_id,
+    revision_count,
+    note
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+    status = excluded.status,
+    last_active_at = excluded.last_active_at,
+    ended_at = excluded.ended_at,
+    final_revision_id = excluded.final_revision_id,
+    revision_count = excluded.revision_count,
+    note = excluded.note;
+
 insertCalculationHistory:
 INSERT INTO calculation_history(
     id,
+    session_id,
+    revision_no,
+    changed_keys,
     formula_id,
     formula_title,
     formula_description,
@@ -272,8 +363,11 @@ INSERT INTO calculation_history(
     created_at,
     updated_at
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
+    session_id = excluded.session_id,
+    revision_no = excluded.revision_no,
+    changed_keys = excluded.changed_keys,
     formula_id = excluded.formula_id,
     formula_title = excluded.formula_title,
     formula_description = excluded.formula_description,
@@ -314,9 +408,34 @@ INSERT INTO calculation_history_output(
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 updateCalculationHistoryNote:
-UPDATE calculation_history
-SET note = ?, updated_at = ?
+UPDATE calculation_session
+SET note = ?, last_active_at = ?
 WHERE id = ?;
+
+updateCalculationSessionAfterRevision:
+UPDATE calculation_session
+SET final_revision_id = ?, revision_count = ?, last_active_at = ?, status = 'ACTIVE'
+WHERE id = ?;
+
+activateCalculationSession:
+UPDATE calculation_session
+SET status = 'ACTIVE', last_active_at = ?
+WHERE id = ? AND status != 'CLOSED';
+
+pauseCalculationSession:
+UPDATE calculation_session
+SET status = 'PAUSED', last_active_at = ?
+WHERE id = ? AND status != 'CLOSED';
+
+closeCalculationSession:
+UPDATE calculation_session
+SET status = 'CLOSED', last_active_at = ?, ended_at = ?
+WHERE id = ?;
+
+closeExpiredCalculationSessions:
+UPDATE calculation_session
+SET status = 'CLOSED', ended_at = last_active_at
+WHERE status IN ('ACTIVE', 'PAUSED') AND last_active_at < ?;
 
 deleteCalculationHistoryInputs:
 DELETE FROM calculation_history_input
@@ -327,8 +446,8 @@ DELETE FROM calculation_history_output
 WHERE history_id = ?;
 
 deleteCalculationHistoryById:
-DELETE FROM calculation_history
+DELETE FROM calculation_session
 WHERE id = ?;
 
 deleteAllCalculationHistories:
-DELETE FROM calculation_history;
+DELETE FROM calculation_session;

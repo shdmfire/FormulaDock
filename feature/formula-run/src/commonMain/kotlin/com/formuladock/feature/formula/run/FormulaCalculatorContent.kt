@@ -6,14 +6,17 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -33,6 +36,7 @@ fun CompactCalculatorContent(
     inputValues: Map<String, String>,
     result: FormulaEvaluationResult,
     onInputValuesChange: (Map<String, String>) -> Unit,
+    onCommitRequested: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -61,6 +65,7 @@ fun CompactCalculatorContent(
                     onValueChange = { value ->
                         onInputValuesChange(inputValues + (input.key to value))
                     },
+                    onCommitRequested = onCommitRequested,
                     modifier = Modifier
                         .weight(1f)
                         .widthIn(min = 120.dp) // 更小限宽，容易横向排满，节省小窗的垂直空间
@@ -115,8 +120,10 @@ private fun CompactInputField(
     value: String,
     unit: String?,
     onValueChange: (String) -> Unit,
+    onCommitRequested: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var wasFocused by remember { mutableStateOf(false) }
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -149,9 +156,22 @@ private fun CompactInputField(
                     onValueChange = { text ->
                         onValueChange(text.asDecimalInput())
                     },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .onFocusChanged { focusState ->
+                            if (wasFocused && !focusState.isFocused) {
+                                onCommitRequested()
+                            }
+                            wasFocused = focusState.isFocused
+                        },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = { onCommitRequested() },
+                    ),
                     textStyle = MaterialTheme.typography.bodyMedium.copy(
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.SemiBold

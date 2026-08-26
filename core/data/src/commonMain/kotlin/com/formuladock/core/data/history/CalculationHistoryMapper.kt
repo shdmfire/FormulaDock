@@ -3,35 +3,39 @@ package com.formuladock.core.data.history
 import com.formuladock.core.database.Calculation_history
 import com.formuladock.core.database.Calculation_history_input
 import com.formuladock.core.database.Calculation_history_output
-import com.formuladock.core.model.history.model.CalculationHistory
 import com.formuladock.core.model.history.model.CalculationHistoryInput
 import com.formuladock.core.model.history.model.CalculationHistoryOutput
+import com.formuladock.core.model.history.model.CalculationRevision
 import com.formuladock.core.model.history.model.CalculationStatus
 
 internal object CalculationHistoryMapper {
-    fun toHistory(
+    fun toRevision(
         history: Calculation_history,
         inputs: List<Calculation_history_input>,
         outputs: List<Calculation_history_output>,
-    ): CalculationHistory {
-        return CalculationHistory(
+    ): CalculationRevision {
+        return CalculationRevision(
             id = history.id,
-            formulaId = history.formula_id,
-            formulaTitle = history.formula_title,
-            formulaDescription = history.formula_description,
-            formulaIsBuiltin = history.formula_is_builtin.toBooleanFlag(),
+            sessionId = history.session_id.orEmpty(),
+            revisionNo = history.revision_no.toInt(),
             status = CalculationStatus.valueOf(history.status),
             inputs = inputs.map { it.toModel() },
             outputs = outputs.map { it.toModel() },
+            changedKeys = history.changed_keys.toChangedKeys(),
             errorMessage = history.error_message,
             errorFieldKey = history.error_field_key,
-            note = history.note,
             createdAt = history.created_at,
             updatedAt = history.updated_at,
         )
     }
 
     fun Boolean.toLongFlag(): Long = if (this) 1L else 0L
+
+    fun Set<String>.toStorageValue(): String? =
+        takeIf { it.isNotEmpty() }?.sorted()?.joinToString(CHANGED_KEY_SEPARATOR)
+
+    private fun String?.toChangedKeys(): Set<String> =
+        this?.split(CHANGED_KEY_SEPARATOR)?.filterTo(linkedSetOf()) { it.isNotBlank() }.orEmpty()
 
     private fun Long.toBooleanFlag(): Boolean = this != 0L
 
@@ -61,4 +65,6 @@ internal object CalculationHistoryMapper {
             sortOrder = sort_order.toInt(),
         )
     }
+
+    private const val CHANGED_KEY_SEPARATOR = "\u001F"
 }
