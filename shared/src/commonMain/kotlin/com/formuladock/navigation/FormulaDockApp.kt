@@ -147,6 +147,9 @@ fun FormulaDockApp(
                         formulaHistoryEntry(
                             repository = historyRepository,
                             onBack = { backStack.removeLastOrNull() },
+                            onEditCalculation = { formulaId, inputs ->
+                                backStack.add(FormulaRunRoute(formulaId = formulaId, initialInputs = inputs))
+                            },
                         )
 
                         // TODO: LocalClipboardManager

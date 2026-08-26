@@ -91,6 +91,7 @@ fun FormulaHistoryScreen(
     formulaTitle: String,
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onEditCalculation: ((formulaId: String, inputs: Map<String, String>) -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     var histories by remember { mutableStateOf<List<CalculationHistory>>(emptyList()) }
@@ -118,6 +119,12 @@ fun FormulaHistoryScreen(
                     title = { Text(stringResource(Res.string.history_detail_title), style = MaterialTheme.typography.titleMedium) },
                     navigationIcon = { IconButton(onClick = { selectedHistory = null }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(Res.string.action_back)) } },
                     actions = {
+                        IconButton(onClick = {
+                            val inputs = history.inputs.associate { it.key to (it.rawValue ?: "") }
+                            onEditCalculation?.invoke(history.formulaId, inputs)
+                        }) {
+                            Icon(Icons.Default.Edit, contentDescription = stringResource(Res.string.action_edit))
+                        }
                         IconButton(onClick = {
                             scope.launch {
                                 DeleteCalculationHistoryUseCase(repository)(history.id)

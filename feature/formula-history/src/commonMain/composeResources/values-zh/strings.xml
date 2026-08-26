@@ -3,6 +3,7 @@
     <string name="history_load_failed">加载计算历史失败</string>
     <string name="history_detail_title">计算详情</string>
     <string name="action_back">返回</string>
+    <string name="action_edit">编辑</string>
     <string name="action_delete">删除</string>
     <string name="history_records_subtitle">计算历史记录</string>
     <string name="history_search_placeholder">搜索备注、参数或结果...</string>

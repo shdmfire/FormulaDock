@@ -17,6 +17,7 @@ data class FormulaHistoryRoute(
 fun EntryProviderScope<NavKey>.formulaHistoryEntry(
     repository: CalculationHistoryRepository,
     onBack: () -> Unit,
+    onEditCalculation: ((formulaId: String, inputs: Map<String, String>) -> Unit)? = null,
 ) {
     entry<FormulaHistoryRoute> { route ->
         FormulaHistoryScreen(
@@ -24,6 +25,7 @@ fun EntryProviderScope<NavKey>.formulaHistoryEntry(
             formulaId = route.formulaId,
             formulaTitle = route.formulaTitle ?: stringResource(Res.string.history_all_formulas),
             onBackClick = onBack,
+            onEditCalculation = onEditCalculation,
         )
     }
 }

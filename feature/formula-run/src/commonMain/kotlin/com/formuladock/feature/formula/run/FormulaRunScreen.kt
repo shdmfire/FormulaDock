@@ -42,10 +42,15 @@ fun FormulaRunScreen(
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
+    initialInputs: Map<String, String>? = null,
 ) {
     // 状态管理由外层或解耦内容层持有，以便复制分享功能获取当前最新数据
-    var inputValues by remember(formula.id) {
-        mutableStateOf(formula.inputs.associate { it.key to (it.defaultValue ?: "") })
+    var inputValues by remember(formula.id, initialInputs) {
+        mutableStateOf(
+            formula.inputs.associate { input ->
+                input.key to (initialInputs?.get(input.key) ?: input.defaultValue ?: "")
+            }
+        )
     }
     val result = remember(formula, inputValues) { evaluateFormula(formula, inputValues) }
 

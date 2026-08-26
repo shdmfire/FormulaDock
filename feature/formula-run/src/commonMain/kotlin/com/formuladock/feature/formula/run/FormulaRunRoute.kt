@@ -22,7 +22,10 @@ import com.formuladock.core.navigation.AppRoute
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class FormulaRunRoute(val formulaId: String) : AppRoute
+data class FormulaRunRoute(
+    val formulaId: String,
+    val initialInputs: Map<String, String>? = null,
+) : AppRoute
 
 fun EntryProviderScope<NavKey>.formulaRunEntry(
     repository: FormulaRepository,
@@ -37,6 +40,7 @@ fun EntryProviderScope<NavKey>.formulaRunEntry(
             repository = repository,
             historyRepository = historyRepository,
             formulaId = route.formulaId,
+            initialInputs = route.initialInputs,
             onBack = onBack,
             onEdit = { onEdit(route.formulaId) },
             onDuplicate = { onDuplicate(route.formulaId) },
@@ -51,6 +55,7 @@ fun FormulaRunRoute(
     historyRepository: CalculationHistoryRepository,
     formulaId: String,
     modifier: Modifier = Modifier,
+    initialInputs: Map<String, String>? = null,
     onBack: () -> Unit,
     onEdit: () -> Unit,
     onDuplicate: () -> Unit,
@@ -75,6 +80,7 @@ fun FormulaRunRoute(
             evaluateFormula = evaluateFormula,
             historyRepository = historyRepository,
             modifier = modifier.fillMaxSize(),
+            initialInputs = initialInputs,
             onBack = onBack,
             onEdit = onEdit,
             onDuplicate = onDuplicate,

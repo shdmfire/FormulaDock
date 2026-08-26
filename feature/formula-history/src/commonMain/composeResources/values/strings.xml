@@ -3,6 +3,7 @@
     <string name="history_load_failed">Failed to load calculation history</string>
     <string name="history_detail_title">Calculation Details</string>
     <string name="action_back">Back</string>
+    <string name="action_edit">Edit</string>
     <string name="action_delete">Delete</string>
     <string name="history_records_subtitle">Calculation History</string>
     <string name="history_search_placeholder">Search notes, parameters or results...</string>
